@@ -1,0 +1,6 @@
+/* change the control buttons to green */
+QPushButton:hover { border-color: #3ddc84; }
+QPushButton:checked { background: #3ddc84; color: #0b0d12; border-color: #3ddc84; }
+QProgressBar::chunk { background: #3ddc84; }
+QMenu::item:selected { background: #3ddc84; color: #0b0d12; }
+QTabBar::tab:selected { border-bottom: 2px solid #3ddc84; }

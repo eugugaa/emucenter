@@ -1,0 +1,57 @@
+/* ==========================================================================
+   EmuCenter — FULL THEME (Aurora
+   --------------------------------------------------------------------------
+   "all" themes change EVERYTHING: application colors, game lists, console headers, 
+   separators, gradients, and logo colors.
+   They also support button and font styling through QSS (similar to CSS) and work 
+   alongside themes/normal packages, which are applied on top.
+
+    Anything NOT defined here retains its base theme value.
+   ========================================================================== */
+
+:root {
+    /* ---- general colors ---- */
+    --bg:        #0f1b2d;   /* window bg (background */
+    --panel:     #14253d;   /* panels and texts fields */
+    --panel2:    #1d3556;   /* title bar, buttons, and tabs */
+    --border:    #2c4b78;   /* border */
+    --text:      #eaf3ff;   /* primary text */
+    --muted:     #8fb0d9;   /* secondary text */
+    --accent:    #19c6a7;   /* highlights, selection, PLAY button, and bars */
+
+    /* ---- game list ---- */
+    --group-bg:           #173a5e;   /* Console headers (Nintendo 64, GameCube, etc.) */
+    --group-text:         #bff3ea;
+    --row-light:          #e9f7f4;   /* light rows (1st, 3rd, 5th, etc.) */
+    --row-light-text:     #0d2b33;
+    --row-dark:           #0b1626;   /* dark rows (2nd, 4th, 6th, etc.) */
+    --row-dark-text:      #d9f1ee;
+    --row-selected:       #19c6a7;   /* selected row */
+    --row-selected-text:  #04211c;
+    --row-separator:      #2c4b78;   /* separator between rows (when row-gap = 0) */
+    --row-radius:         14;        /* row and group corner radius (0 to 30) */
+    --row-gap:            6;         /* spacing between rows in pixels (0 to 20) */
+
+    /* ---- emulator status ---- */
+    --ok:   #5fe3a1;   /* "ready" status */
+    --warn: #ffd166;   /* alternative options "or >>" */
+    --err:  #ff7b7b;   /* "need >>" / erro */
+
+    /* ---- logo ---- */
+    --plate:      #e8f4ff;   /* light background behind the logo (only when logo-color = original) */
+    --logo-color: #7ff3de;   /* logo text color. Use "original" to preserve the original logo color */
+
+    /* ---- gradient ---- */
+    --gradient:   on;        /* on | off  (the theme overrides the user's gradient setting) */
+    --gradient-a: #16345c;   /* top color (background and title bar) */
+    --gradient-b: #0a1320;   /* bottom color */
+}
+
+/* ---- buttons, fonts, and details (QSS) ---- */
+* { font-family: "Segoe UI", "Inter", sans-serif; }
+QPushButton { border-radius: 14px; padding: 11px 24px; }
+QPushButton:hover { border-color: #19c6a7; background: #234872; }
+QPushButton#play { border-radius: 16px; color: #04211c; }
+QTabBar::tab:selected { border-bottom: 3px solid #19c6a7; }
+QProgressBar::chunk { background: #19c6a7; }
+QLabel#title { font-size: 30px; }
