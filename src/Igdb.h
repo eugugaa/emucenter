@@ -13,7 +13,7 @@ struct IgdbGame {
     QStringList artworks, screenshots;     // image_id
 };
 
-// IGDB (Twitch) API client. Requires its own Client ID and Client Secret (free at dev.twitch.tv).
+// Cliente da API do IGDB (Twitch). Precisa de Client ID e Client Secret próprios (grátis em dev.twitch.tv).
 class Igdb : public QObject {
     Q_OBJECT
 public:

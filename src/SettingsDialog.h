@@ -47,5 +47,5 @@ private:
     QGridLayout* paletteGrid_ = nullptr;
     QGridLayout* allGrid_ = nullptr;
     QGridLayout* normalGrid_ = nullptr;
-    QMap<QString, QString> latest_;   // id -> update text
+    QMap<QString, QString> latest_;   // id -> texto de atualização
 };

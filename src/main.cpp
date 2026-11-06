@@ -17,7 +17,6 @@ int main(int argc, char** argv) {
     const QString lang = QSettings().value("lang", "pt").toString();
     I18n::setLang(lang);
 
-    // ---- single instance: if an EmuCenter is already open, warns and brings it to the front ----
     const QString serverName = "EmuCenter-single-instance";
     {
         QLocalSocket probe;
@@ -26,16 +25,15 @@ int main(int argc, char** argv) {
             probe.write("show");
             probe.waitForBytesWritten(300);
             QMessageBox::warning(nullptr, "EmuCenter",
-                                 lang == "en" ? "EmuCenter is already running."
-                                              : "O EmuCenter já está aberto.");
+                                 lang == "en" ? "EmuCenter is already running. Opening the existing window."
+                                              : "EmuCenter is already running. Bringing the existing window to the front.");
             return 0;
         }
     }
-    QLocalServer::removeServer(serverName);   // clears leftovers from an unexpected previous close
+    QLocalServer::removeServer(serverName);
     QLocalServer server;
     server.listen(serverName);
 
-    // first run with no themes on disk: copies embedded examples to themes/all and themes/normal
     if (Theme::list(Theme::All).isEmpty() && Theme::list(Theme::Normal).isEmpty()) {
         const QList<QPair<Theme::Kind, QString>> ex = {{Theme::All, "exemplo-tudo.css"},
                                                        {Theme::Normal, "exemplo-botoes-arredondados.css"},
@@ -54,7 +52,6 @@ int main(int argc, char** argv) {
     const bool hidden = QSettings().value("startMinimized", false).toBool() && QSystemTrayIcon::isSystemTrayAvailable();
     if (!hidden) w.show();
 
-    // another instance tried to open: shows this window (also exits the tray)
     QObject::connect(&server, &QLocalServer::newConnection, &w, [&server, &w] {
         while (QLocalSocket* c = server.nextPendingConnection()) c->deleteLater();
         w.showNormal();

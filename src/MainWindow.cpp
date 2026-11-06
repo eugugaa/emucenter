@@ -16,6 +16,8 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
+#include <QInputDialog>
+#include <QProgressDialog>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -56,10 +58,10 @@ protected:
         const Palette& P = Theme::current();
         p.fillRect(rect(), P.panel2);
         if (pm_.isNull()) {
-            if (P.logoColor.isValid()) {   // logo colored by theme, directly on the background
+            if (P.logoColor.isValid()) {   // logo colorida pelo tema, direto no fundo
                 const QPixmap s = Theme::logo(logo_).scaledToHeight(height() / 2, Qt::SmoothTransformation);
                 p.drawPixmap((width() - s.width()) / 2, (height() - s.height()) / 2, s);
-            } else {                       // original logo on a light plate
+            } else {                       // logo original sobre uma placa clara
                 const int h = height() * 3 / 5;
                 QRect plate(0, 0, h * 5 / 4, h);
                 plate.moveCenter(rect().center());
@@ -71,7 +73,7 @@ protected:
             const QPixmap s = pm_.scaled(size(), Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
             p.drawPixmap((width() - s.width()) / 2, (height() - s.height()) / 2, s);
         }
-        QLinearGradient g(0, height() * 0.5, 0, height());   // fades the banner down to the background color
+        QLinearGradient g(0, height() * 0.5, 0, height());   // esmaece o banner até a cor do fundo
         QColor t = P.bg; t.setAlpha(0);
         g.setColorAt(0, t); g.setColorAt(1, P.bg);
         p.fillRect(rect(), g);
@@ -80,7 +82,7 @@ private:
     QPixmap pm_, logo_;
 };
 
-// ---------------------------------------------------------------- List: alternating light/dark rows
+// ---------------------------------------------------------------- Lista: linhas claro / escuro alternadas
 class GameDelegate : public QStyledItemDelegate {
 public:
     using QStyledItemDelegate::QStyledItemDelegate;
@@ -94,7 +96,7 @@ public:
         p->save();
         p->setRenderHint(QPainter::Antialiasing);
         const int rad = P.rowRadius;
-        if (!i.parent().isValid()) {   // console header
+        if (!i.parent().isValid()) {   // cabeçalho do console
             const QRect g = o.rect.adjusted(8, 5, -8, -1);
             p->setPen(Qt::NoPen);
             p->setBrush(P.groupBg);
@@ -115,7 +117,7 @@ public:
             p->setPen(Qt::NoPen);
             p->setBrush(bg);
             p->drawRoundedRect(row, rad, rad);
-            if (!sel && P.rowGap == 0) {   // no gap between rows: a thin line separates them
+            if (!sel && P.rowGap == 0) {   // sem espaço entre linhas: uma linha fina separa
                 p->setPen(P.separator);
                 p->drawLine(row.left() + rad, row.bottom(), row.right() - rad, row.bottom());
             }
@@ -135,7 +137,7 @@ public:
     }
 };
 
-// ---------------------------------------------------------------- Title Bar
+// ---------------------------------------------------------------- Barra de título
 class TitleBar : public QWidget {
 public:
     std::function<void()> onDouble;
@@ -163,7 +165,7 @@ MainWindow::MainWindow() : meta_(&igdb_) {
     setMinimumSize(900, 560);
     if (frameless_) setWindowFlag(Qt::FramelessWindowHint);
 
-    // ---------- title bar with embedded buttons ----------
+    // ---------- barra de título com botões embutidos ----------
     auto* bar = new TitleBar;
     bar->onDouble = [this] { if (frameless_) toggleMaximize(); };
     auto* bl = new QHBoxLayout(bar);
@@ -171,26 +173,32 @@ MainWindow::MainWindow() : meta_(&igdb_) {
     auto* ico = new QLabel; ico->setPixmap(QPixmap(":/app_icon.png").scaled(28, 28, Qt::KeepAspectRatio, Qt::SmoothTransformation));
     auto* ttl = new QLabel("EmuCenter"); ttl->setObjectName("muted");
     bl->addWidget(ico); bl->addSpacing(6); bl->addWidget(ttl); bl->addStretch();
-    auto* addB = tbtn(QString::fromUtf8("＋ ") + T("ROMs"), T("Add ROM folder"));
-    auto* metaB = tbtn(QString::fromUtf8("⟳ ") + T("Metadata"), T("Download / update metadata"));
-    auto* cfgB = tbtn(QString::fromUtf8("⚙ ") + T("Settings"), T("Settings"));
+    auto* addB = tbtn(QString::fromUtf8("＋ ") + T("ROMs"), T("Adicionar pasta de ROMs"));
+    auto* metaB = tbtn(QString::fromUtf8("⟳ ") + T("Metadados"), T("Baixar / atualizar metadados"));
+    auto* cfgB = tbtn(QString::fromUtf8("⚙ ") + T("Configurações"), T("Configurações"));
     bl->addWidget(addB); bl->addWidget(metaB); bl->addWidget(cfgB);
     if (frameless_) {
         bl->addSpacing(8);
-        auto* mn = tbtn(QString::fromUtf8("—"), T("Minimize"), "winbtn");
-        maxBtn_ = tbtn(QString::fromUtf8("▢"), T("Maximize"), "winbtn");
-        auto* cl = tbtn(QString::fromUtf8("✕"), T("Close"), "closebtn");
+        auto* mn = tbtn(QString::fromUtf8("—"), T("Minimizar"), "winbtn");
+        maxBtn_ = tbtn(QString::fromUtf8("▢"), T("Maximizar"), "winbtn");
+        auto* cl = tbtn(QString::fromUtf8("✕"), T("Fechar"), "closebtn");
         connect(mn, &QToolButton::clicked, this, &QWidget::showMinimized);
         connect(maxBtn_, &QToolButton::clicked, this, &MainWindow::toggleMaximize);
         connect(cl, &QToolButton::clicked, this, &QWidget::close);
         bl->addWidget(mn); bl->addWidget(maxBtn_); bl->addWidget(cl);
-        qApp->installEventFilter(this);   // resize via borders
+        qApp->installEventFilter(this);   // redimensionar pelas bordas
     }
-    connect(addB, &QToolButton::clicked, this, &MainWindow::addRomFolder);
+    {   // botão ROMs: escolher entre adicionar uma pasta ou importar arquivos
+        auto* romMenu = new QMenu(addB);
+        romMenu->addAction(T("Adicionar pasta de ROMs…"), this, &MainWindow::addRomFolder);
+        romMenu->addAction(T("Importar arquivo(s) de ROM…"), this, &MainWindow::importRoms);
+        addB->setMenu(romMenu);
+        addB->setPopupMode(QToolButton::InstantPopup);
+    }
     connect(metaB, &QToolButton::clicked, this, [this] { refreshMetadata(false); });
     connect(cfgB, &QToolButton::clicked, this, [this] { openSettings(0); });
 
-    // ---------- left: logo (opens menu) + list ----------
+    // ---------- esquerda: logo (abre menu) + lista ----------
     auto* side = new QWidget; side->setObjectName("side");
     auto* sl = new QVBoxLayout(side);
     sl->setContentsMargins(10, 10, 0, 10);
@@ -198,7 +206,7 @@ MainWindow::MainWindow() : meta_(&igdb_) {
     logoBtn_ = logo;
     logo->setIconSize(QSize(210, 22));
     applyLogo();
-    logo->setToolTip(T("EmuCenter Menu"));
+    logo->setToolTip(T("Menu do EmuCenter"));
     logo->setCursor(Qt::PointingHandCursor);
     logo->setPopupMode(QToolButton::InstantPopup);
     logoMenu_ = new QMenu(this);
@@ -219,7 +227,7 @@ MainWindow::MainWindow() : meta_(&igdb_) {
     sl->addWidget(tree_, 1);
     side->setMinimumWidth(300);
 
-    // ---------- right: banner + play + info ----------
+    // ---------- direita: banner + jogar + informações ----------
     auto* main = new QWidget; main->setObjectName("root");
     auto* ml = new QVBoxLayout(main);
     ml->setContentsMargins(0, 0, 0, 12);
@@ -228,10 +236,10 @@ MainWindow::MainWindow() : meta_(&igdb_) {
     auto* body = new QVBoxLayout;
     body->setContentsMargins(20, 10, 20, 0);
     ml->addLayout(body, 1);
-    title_ = new QLabel(T("Select a game")); title_->setObjectName("title");
+    title_ = new QLabel(T("Selecione um jogo")); title_->setObjectName("title");
     info_ = new QLabel; info_->setObjectName("muted");
     auto* row = new QHBoxLayout; row->setSpacing(12);
-    playBtn_ = new QPushButton(T("PLAY")); playBtn_->setObjectName("play"); playBtn_->setCursor(Qt::PointingHandCursor);
+    playBtn_ = new QPushButton(T("JOGAR")); playBtn_->setObjectName("play"); playBtn_->setCursor(Qt::PointingHandCursor);
     installBtn_ = new QPushButton;
     status_ = new QLabel; status_->setTextFormat(Qt::RichText);
     row->addWidget(playBtn_); row->addWidget(installBtn_); row->addWidget(status_, 1);
@@ -248,20 +256,20 @@ MainWindow::MainWindow() : meta_(&igdb_) {
     cl->addWidget(bar); cl->addWidget(split, 1);
     setCentralWidget(central);
 
-    // ---------- status bar: metadata progress ----------
+    // ---------- barra de status: progresso dos metadados ----------
     metaLbl_ = new QLabel; metaBar_ = new QProgressBar; metaBar_->setFixedWidth(220); metaBar_->hide();
     statusBar()->addPermanentWidget(metaLbl_);
     statusBar()->addPermanentWidget(metaBar_);
-    statusBar()->showMessage(T("Ready."));
+    statusBar()->showMessage(T("Pronto."));
 
-    // ---------- tray ----------
+    // ---------- bandeja ----------
     if (QSystemTrayIcon::isSystemTrayAvailable()) {
         tray_ = new QSystemTrayIcon(QIcon(":/app_icon.png"), this);
         auto* tm = new QMenu(this);
-        tm->addAction(T("Open EmuCenter"), this, [this] { showNormal(); raise(); activateWindow(); });
-        tm->addAction(T("Update metadata"), this, [this] { refreshMetadata(false); });
+        tm->addAction(T("Abrir EmuCenter"), this, [this] { showNormal(); raise(); activateWindow(); });
+        tm->addAction(T("Atualizar metadados"), this, [this] { refreshMetadata(false); });
         tm->addSeparator();
-        tm->addAction(T("Exit"), this, [this] { quitting_ = true; close(); });
+        tm->addAction(T("Sair"), this, [this] { quitting_ = true; close(); });
         tray_->setContextMenu(tm);
         tray_->setToolTip("EmuCenter");
         connect(tray_, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason r) {
@@ -271,7 +279,7 @@ MainWindow::MainWindow() : meta_(&igdb_) {
     }
     QApplication::setQuitOnLastWindowClosed(false);
 
-    // ---------- connections ----------
+    // ---------- ligações ----------
     connect(playBtn_, &QPushButton::clicked, this, &MainWindow::play);
     connect(installBtn_, &QPushButton::clicked, this, &MainWindow::installMissing);
     connect(tree_, &QTreeWidget::itemSelectionChanged, this, &MainWindow::onSelect);
@@ -292,7 +300,7 @@ MainWindow::MainWindow() : meta_(&igdb_) {
         rebuildTree();
     });
     connect(&emu_, &EmulatorManager::updatesChecked, this, [this](int n) {
-        if (n > 0) notify("EmuCenter", T("%1 emulator update(s) available. Check Settings › Emulators.").arg(n));
+        if (n > 0) notify("EmuCenter", T("%1 atualização(ões) de emulador disponível(is). Veja em Configurações › Emuladores.").arg(n));
     });
 
     connect(&meta_, &Metadata::imageReady, this, [this](const QString& key, int kind, const QPixmap& pm) {
@@ -314,18 +322,18 @@ MainWindow::MainWindow() : meta_(&igdb_) {
     connect(&meta_, &Metadata::progress, this, [this](int d, int t) {
         metaBar_->setRange(0, t); metaBar_->setValue(d);
         metaBar_->setVisible(t > 0 && d < t);
-        metaLbl_->setText(t > 0 && d < t ? T("Metadata: %1/%2").arg(d).arg(t) : QString());
+        metaLbl_->setText(t > 0 && d < t ? T("Metadados: %1/%2").arg(d).arg(t) : QString());
     });
     connect(&meta_, &Metadata::batchFinished, this, [this](int, int dl) {
         metaBar_->hide(); metaLbl_->clear();
-        if (dl > 0) { statusBar()->showMessage(T("Metadata updated."), 6000); notify("EmuCenter", T("Game metadata updated (%1 new items).").arg(dl)); }
+        if (dl > 0) { statusBar()->showMessage(T("Metadados atualizados."), 6000); notify("EmuCenter", T("Metadados dos jogos atualizados (%1 itens novos).").arg(dl)); }
     });
 
     metaTimer_ = new QTimer(this);
     connect(metaTimer_, &QTimer::timeout, this, [this] { refreshMetadata(false); });
     applyGeneral();
 
-    // list appears immediately (cache icons); network only after the delays configured in Advanced
+    // lista aparece na hora (ícones do cache); rede só depois dos atrasos configurados em Avançado
     rescanImpl(false);
     if (QSettings().value("romDirs").toStringList().isEmpty()) QTimer::singleShot(400, this, &MainWindow::addRomFolder);
     {
@@ -355,7 +363,7 @@ void MainWindow::notify(const QString& title, const QString& msg) {
     else statusBar()->showMessage(msg, 8000);
 }
 
-// ---------------------------------------------------------------- window
+// ---------------------------------------------------------------- janela
 void MainWindow::toggleMaximize() {
     if (isMaximized()) { showNormal(); if (maxBtn_) maxBtn_->setText(QString::fromUtf8("▢")); }
     else { showMaximized(); if (maxBtn_) maxBtn_->setText(QString::fromUtf8("❐")); }
@@ -382,58 +390,59 @@ void MainWindow::closeEvent(QCloseEvent* e) {
     if (!quitting_ && tray_ && tray_->isVisible() && QSettings().value("background", true).toBool()) {
         hide();
         e->ignore();
-        if (!shownTrayHint_) { shownTrayHint_ = true; tray_->showMessage("EmuCenter", T("EmuCenter continues running in the background. Click the tray icon to open."), QSystemTrayIcon::Information, 5000); }
+        if (!shownTrayHint_) { shownTrayHint_ = true; tray_->showMessage("EmuCenter", T("O EmuCenter continua em segundo plano. Clique no ícone da bandeja para abrir."), QSystemTrayIcon::Information, 5000); }
         return;
     }
     e->accept();
     qApp->quit();
 }
 
-// ---------------------------------------------------------------- logo menu
+// ---------------------------------------------------------------- menu da logo
 void MainWindow::fillLogoMenu() {
     QMenu* m = logoMenu_;
     m->clear();
-    m->addAction(T("Settings…"), this, [this] { openSettings(0); });
+    m->addAction(T("Configurações…"), this, [this] { openSettings(0); });
     m->addSeparator();
-    m->addAction(T("Add ROM folder…"), this, &MainWindow::addRomFolder);
-    m->addAction(T("Rescan games"), this, &MainWindow::rescan);
-    m->addAction(T("Update metadata"), this, [this] { refreshMetadata(false); });
-    m->addAction(T("Retry failed metadata"), this, [this] { refreshMetadata(true); });
-    m->addAction(T("Check for emulator updates"), this, &MainWindow::checkEmuUpdates);
+    m->addAction(T("Adicionar pasta de ROMs…"), this, &MainWindow::addRomFolder);
+    m->addAction(T("Importar arquivo(s) de ROM…"), this, &MainWindow::importRoms);
+    m->addAction(T("Procurar jogos novamente"), this, &MainWindow::rescan);
+    m->addAction(T("Atualizar metadados"), this, [this] { refreshMetadata(false); });
+    m->addAction(T("Refazer metadados que falharam"), this, [this] { refreshMetadata(true); });
+    m->addAction(T("Verificar atualizações dos emuladores"), this, &MainWindow::checkEmuUpdates);
     m->addSeparator();
 
-    QMenu* lang = m->addMenu(T("Language"));
+    QMenu* lang = m->addMenu(T("Idioma"));
     auto* lg = new QActionGroup(lang);
     for (auto [code, name] : {std::pair<QString, QString>{"pt", "Português (Brasil)"}, {"en", "English"}}) {
         QAction* a = lang->addAction(name); a->setCheckable(true); a->setChecked(I18n::lang() == code); lg->addAction(a);
         connect(a, &QAction::triggered, this, [this, code = code] {
             I18n::setLang(code);
-            QMessageBox::information(this, "EmuCenter", T("Restart EmuCenter to apply the language."));
+            QMessageBox::information(this, "EmuCenter", T("Reinicie o EmuCenter para aplicar o idioma."));
         });
     }
-    QMenu* th = m->addMenu(T("Theme"));
+    QMenu* th = m->addMenu(T("Tema"));
     auto* tg = new QActionGroup(th);
     for (const auto& p : Theme::builtins()) {
         QAction* a = th->addAction(p.name); a->setCheckable(true); a->setChecked(QSettings().value("theme", "grafite") == p.id); tg->addAction(a);
         connect(a, &QAction::triggered, this, [this, id = p.id] { QSettings().setValue("theme", id); Theme::apply(); applyLogo(); rebuildTree(); banner_->update(); });
     }
     m->addSeparator();
-    m->addAction(T("Open data folder"), this, [] {
+    m->addAction(T("Abrir pasta de dados"), this, [] {
         const QString d = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
         QDir().mkpath(d); QDesktopServices::openUrl(QUrl::fromLocalFile(d));
     });
-    m->addAction(T("Open emulators folder"), this, [this] { QDir().mkpath(emu_.root()); QDesktopServices::openUrl(QUrl::fromLocalFile(emu_.root())); });
-    m->addAction(T("About EmuCenter"), this, [this] {
-        QMessageBox::about(this, "EmuCenter", "<b>EmuCenter 0.2</b><br>" + T("Lightweight emulator center.") + "<br><br>" +
-                                             T("Images: libretro-thumbnails  •  Descriptions: Wikipedia"));
+    m->addAction(T("Abrir pasta dos emuladores"), this, [this] { QDir().mkpath(emu_.root()); QDesktopServices::openUrl(QUrl::fromLocalFile(emu_.root())); });
+    m->addAction(T("Sobre o EmuCenter"), this, [this] {
+        QMessageBox::about(this, "EmuCenter", "<b>EmuCenter 0.2</b><br>" + T("Central leve de emuladores.") + "<br><br>" +
+                                                  T("Imagens: libretro-thumbnails  •  Descrições: Wikipédia"));
     });
     m->addSeparator();
-    m->addAction(T("Exit"), this, [this] { quitting_ = true; close(); });
+    m->addAction(T("Sair"), this, [this] { quitting_ = true; close(); });
 }
 
-// ---------------------------------------------------------------- library
+// ---------------------------------------------------------------- biblioteca
 void MainWindow::addRomFolder() {
-    const QString d = QFileDialog::getExistingDirectory(this, T("Choose the folder with your ROMs"));
+    const QString d = QFileDialog::getExistingDirectory(this, T("Escolha a pasta com suas ROMs"));
     if (d.isEmpty()) return;
     QSettings s;
     QStringList dirs = s.value("romDirs").toStringList();
@@ -442,12 +451,57 @@ void MainWindow::addRomFolder() {
     rescan();
 }
 
+void MainWindow::importRoms() {
+    QStringList dirs = QSettings().value("romDirs").toStringList();
+    if (dirs.isEmpty()) {   // precisa de uma pasta de biblioteca para onde importar
+        addRomFolder();
+        dirs = QSettings().value("romDirs").toStringList();
+        if (dirs.isEmpty()) return;
+    }
+    QStringList exts;
+    for (const auto& sd : Catalog::systems()) for (const auto& e : sd.exts) if (!exts.contains("*." + e)) exts << "*." + e;
+    const QStringList files = QFileDialog::getOpenFileNames(this, T("Escolha as ROMs para importar"), {}, T("ROMs (%1)").arg(exts.join(' ')));
+    if (files.isEmpty()) return;
+
+    QString dest = dirs.first();
+    if (dirs.size() > 1) {
+        bool ok = false;
+        dest = QInputDialog::getItem(this, "EmuCenter", T("Importar para qual pasta?"), dirs, 0, false, &ok);
+        if (!ok) return;
+    }
+    QMessageBox box(QMessageBox::Question, "EmuCenter", T("Copiar ou mover os arquivos para a biblioteca?"), QMessageBox::NoButton, this);
+    auto* copyB = box.addButton(T("Copiar"), QMessageBox::AcceptRole);
+    auto* moveB = box.addButton(T("Mover"), QMessageBox::DestructiveRole);
+    box.addButton(T("Cancelar"), QMessageBox::RejectRole);
+    box.exec();
+    if (box.clickedButton() != copyB && box.clickedButton() != moveB) return;
+    const bool move = box.clickedButton() == moveB;
+
+    QProgressDialog pd(T("Importando…"), T("Cancelar"), 0, files.size(), this);
+    pd.setWindowModality(Qt::WindowModal);
+    pd.setMinimumDuration(0);
+    int okCount = 0;
+    QStringList failed;
+    for (int i = 0; i < files.size(); ++i) {
+        pd.setValue(i);
+        pd.setLabelText(T("Importando…") + "\n" + QFileInfo(files[i]).fileName());
+        if (pd.wasCanceled()) break;
+        QString err;
+        if (Library::importFile(files[i], dest, move, [&pd] { return pd.wasCanceled(); }, &err)) ++okCount;
+        else failed << QFileInfo(files[i]).fileName() + " — " + err;
+    }
+    pd.setValue(files.size());
+    rescan();
+    statusBar()->showMessage(T("%1 ROM(s) importada(s).").arg(okCount), 8000);
+    if (!failed.isEmpty()) QMessageBox::warning(this, "EmuCenter", T("Não foi possível importar:") + "\n" + failed.join("\n"));
+}
+
 void MainWindow::rescan() { rescanImpl(true); }
 
 void MainWindow::rescanImpl(bool network) {
     games_ = Library::scan(QSettings().value("romDirs").toStringList());
     rebuildTree();
-    meta_.loadCachedIcons(games_);   // icons already on disk, no network
+    meta_.loadCachedIcons(games_);   // ícones que já estão no disco, sem rede
     if (!network) return;
     if (QSettings().value("autoMeta", true).toBool()) meta_.enqueueAll(games_);
     else for (const auto& g : games_) if (!icons_.contains(g.key())) meta_.requestIcon(g);
@@ -461,13 +515,13 @@ void MainWindow::applyLogo() {
 
 void MainWindow::refreshMetadata(bool force) {
     if (force) meta_.clearFailures();
-    if (games_.isEmpty()) { statusBar()->showMessage(T("No games to update."), 5000); return; }
-    statusBar()->showMessage(T("Downloading metadata…"), 4000);
+    if (games_.isEmpty()) { statusBar()->showMessage(T("Nenhum jogo para atualizar."), 5000); return; }
+    statusBar()->showMessage(T("Baixando metadados…"), 4000);
     meta_.enqueueAll(games_);
 }
 
 void MainWindow::checkEmuUpdates() {
-    statusBar()->showMessage(T("Checking for emulator updates…"), 4000);
+    statusBar()->showMessage(T("Verificando atualizações dos emuladores…"), 4000);
     emu_.checkAllUpdates();
 }
 
@@ -475,7 +529,7 @@ void MainWindow::rebuildTree() {
     const QString keep = current() ? current()->key() : QString();
     tree_->blockSignals(true);
     tree_->clear(); items_.clear();
-    int n = 0;   // continuous parity across the ENTIRE list: light, dark, light...
+    int n = 0;   // paridade contínua em TODA a lista: claro, escuro, claro...
     for (const auto& s : Catalog::systems()) {
         QTreeWidgetItem* top = nullptr;
         const bool ok = std::any_of(s.emus.begin(), s.emus.end(), [&](const EmuLink& l) { return emu_.available(l); });
@@ -487,7 +541,7 @@ void MainWindow::rebuildTree() {
             }
             auto* it = new QTreeWidgetItem(top, {g.title});
             it->setData(0, Qt::UserRole, g.key());
-            it->setData(0, GameDelegate::Parity, n++ % 2);          // light, dark, light...
+            it->setData(0, GameDelegate::Parity, n++ % 2);          // claro, escuro, claro...
             it->setData(0, GameDelegate::NoEmu, !ok);
             if (icons_.contains(g.key())) it->setIcon(0, icons_[g.key()]);
             items_[g.key()] = it;
@@ -513,7 +567,7 @@ void MainWindow::onSelect() {
     banner_->setImage({});
     desc_->clear();
     if (!g) {
-        title_->setText(T("Select a game")); info_->clear(); status_->clear();
+        title_->setText(T("Selecione um jogo")); info_->clear(); status_->clear();
         playBtn_->setEnabled(false); installBtn_->hide();
         return;
     }
@@ -529,9 +583,9 @@ void MainWindow::refreshStatus() {
     const Palette& P = Theme::current();
     const SystemDef* s = Catalog::system(g->systemId);
     const auto last = Library::lastPlayed(*g);
-    info_->setText(T("%1  •  Play time: %2  •  Last played: %3")
-                     .arg(s->name, Library::formatDuration(Library::playSeconds(*g)),
-                          last.isValid() ? last.toString("dd/MM/yyyy") : QString::fromUtf8("—")));
+    info_->setText(T("%1  •  Tempo de jogo: %2  •  Último: %3")
+                       .arg(s->name, Library::formatDuration(Library::playSeconds(*g)),
+                            last.isValid() ? last.toString("dd/MM/yyyy") : QString::fromUtf8("—")));
 
     auto name = [](const EmuLink& l) {
         QString n = Catalog::emu(l.emuId)->name;
@@ -541,9 +595,9 @@ void MainWindow::refreshStatus() {
     bool anyOk = primaryOk;
     QString html;
     if (primaryOk)
-        html = "<span style='color:" + P.ok.name() + "'><b>✔ " + T("Ready") + "</b> — " + name(s->emus.first()).toHtmlEscaped() + "</span>";
+        html = "<span style='color:" + P.ok.name() + "'><b>✔ " + T("Pronto") + "</b> — " + name(s->emus.first()).toHtmlEscaped() + "</span>";
     else
-        html = "<span style='color:" + P.err.name() + "'><b>" + T("1 error") + "</b><br>need &gt;&gt; " + name(s->emus.first()).toHtmlEscaped() + "</span>";
+        html = "<span style='color:" + P.err.name() + "'><b>" + T("1 erro") + "</b><br>need &gt;&gt; " + name(s->emus.first()).toHtmlEscaped() + "</span>";
     for (int i = 1; i < s->emus.size(); ++i) {
         const bool ok = emu_.available(s->emus[i]);
         anyOk |= ok;
@@ -552,7 +606,7 @@ void MainWindow::refreshStatus() {
     status_->setText(html);
     playBtn_->setEnabled(anyOk);
     installBtn_->setVisible(!primaryOk);
-    installBtn_->setText(T("Install ") + Catalog::emu(s->emus.first().emuId)->name);
+    installBtn_->setText(T("Instalar ") + Catalog::emu(s->emus.first().emuId)->name);
 }
 
 void MainWindow::installMissing() {
@@ -562,21 +616,21 @@ void MainWindow::installMissing() {
     emu_.install(l.emuId, l.core);
 }
 
-// ---------------------------------------------------------------- play
+// ---------------------------------------------------------------- jogar
 void MainWindow::play() {
     const Game* g = current();
     if (!g) return;
     const SystemDef* s = Catalog::system(g->systemId);
     const auto opts = Library::options(*g);
 
-    QList<EmuLink> order;   // emulator chosen for this game comes first
+    QList<EmuLink> order;   // emulador escolhido para este jogo vem primeiro
     for (const EmuLink& l : s->emus) if (!opts.emu.isEmpty() && opts.emu == l.emuId + "|" + l.core) order << l;
     for (const EmuLink& l : s->emus) if (opts.emu != l.emuId + "|" + l.core) order << l;
 
     for (const EmuLink& l : order) {
         QString prog; QStringList args;
         if (!emu_.available(l) || !emu_.buildCommand(l, g->path, prog, args)) continue;
-        if (!opts.args.trimmed().isEmpty()) args << QProcess::splitCommand(opts.args);   // extra game arguments
+        if (!opts.args.trimmed().isEmpty()) args << QProcess::splitCommand(opts.args);   // comandos extras do jogo
         auto* p = new QProcess(this);
         const Game game = *g;
         auto* t = new QElapsedTimer; t->start();
@@ -587,13 +641,13 @@ void MainWindow::play() {
         });
         p->setWorkingDirectory(QFileInfo(prog).absolutePath());
         p->start(prog, args);
-        statusBar()->showMessage(T("Running %1…").arg(g->title));
+        statusBar()->showMessage(T("Executando %1…").arg(g->title));
         return;
     }
     installMissing();
 }
 
-// ---------------------------------------------------------------- per-game menu and options
+// ---------------------------------------------------------------- menu e opções por jogo
 void MainWindow::gameMenu(const QPoint& pos) {
     auto* it = tree_->itemAt(pos);
     if (!it || !it->parent()) return;
@@ -602,29 +656,29 @@ void MainWindow::gameMenu(const QPoint& pos) {
     if (!gp) return;
     const Game g = *gp;
     QMenu m;
-    m.addAction(T("Play"), this, &MainWindow::play);
-    m.addAction(T("Game settings…"), this, [this, g] { gameSettings(g); });
+    m.addAction(T("Jogar"), this, &MainWindow::play);
+    m.addAction(T("Configurações do jogo…"), this, [this, g] { gameSettings(g); });
     m.addSeparator();
-    m.addAction(T("Show file in folder"), this, [g] { QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(g.path).absolutePath())); });
-    m.addAction(T("Copy path"), this, [g] { QApplication::clipboard()->setText(g.path); });
-    m.addAction(T("Download metadata again"), this, [this, g] {
+    m.addAction(T("Mostrar o arquivo na pasta"), this, [g] { QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(g.path).absolutePath())); });
+    m.addAction(T("Copiar caminho"), this, [g] { QApplication::clipboard()->setText(g.path); });
+    m.addAction(T("Baixar metadados deste jogo de novo"), this, [this, g] {
         meta_.refreshGame(g);
         QList<Game> one{g}; meta_.enqueueAll(one); meta_.requestBanner(g); meta_.requestText(g);
     });
-    m.addAction(T("Reset play time"), this, [this, g] { Library::resetPlayTime(g); refreshStatus(); });
+    m.addAction(T("Zerar tempo de jogo"), this, [this, g] { Library::resetPlayTime(g); refreshStatus(); });
     m.exec(tree_->viewport()->mapToGlobal(pos));
 }
 
 void MainWindow::gameSettings(const Game& g) {
     GameSettingsDialog d(g, &emu_, &meta_, &igdb_, this);
     if (d.exec() != QDialog::Accepted || !d.changed()) return;
-    rescanImpl(false);                                     // recalculates names and reloads custom icons
+    rescanImpl(false);                                   // recalcula nomes e recarrega ícones personalizados
     QList<Game> one{g};
-    meta_.enqueueAll(one);                                 // downloads missing items with the new choices
+    meta_.enqueueAll(one);                               // baixa o que faltar com as novas escolhas
     onSelect();
 }
 
-// ---------------------------------------------------------------- settings
+// ---------------------------------------------------------------- configurações
 void MainWindow::openSettings(int tab) {
     SettingsDialog d(&emu_, &meta_, &igdb_, this, tab);
     connect(&d, &SettingsDialog::romFoldersChanged, this, &MainWindow::rescan);

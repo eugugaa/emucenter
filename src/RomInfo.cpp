@@ -5,10 +5,10 @@
 static QString pretty(const QString& s) {
     bool hasLower = false;
     for (QChar c : s) if (c.isLower()) hasLower = true;
-    if (hasLower) return s;                        // already has upper/lowercase
+    if (hasLower) return s;                         // já está com maiúsculas/minúsculas
     static const QStringList small = {"of", "the", "in", "to", "a", "an", "and", "vs", "on"};
     QStringList w = s.toLower().split(' ', Qt::SkipEmptyParts);
-    for (int i = 0; i < w.size(); ++i) {            // UPPERCASE TITLE -> Title in Uppercase
+    for (int i = 0; i < w.size(); ++i) {            // TÍTULO EM CAIXA ALTA -> Título Em Caixa Alta
         bool digit = false;
         for (QChar c : w[i]) if (c.isDigit()) digit = true;
         if (digit) { w[i] = w[i].toUpper(); continue; }
@@ -27,7 +27,7 @@ static QString clean(QByteArray b) {
     if (s.size() < 3) return {};
     int alnum = 0;
     for (QChar c : s) if (c.isLetterOrNumber()) ++alnum;
-    if (alnum * 10 < s.size() * 6) return {};       // binary garbage
+    if (alnum * 10 < s.size() * 6) return {};       // lixo binário
     return pretty(s);
 }
 
@@ -38,7 +38,7 @@ QString RomInfo::internalName(const QString& path, const QString& sys) {
     if (!f.open(QIODevice::ReadOnly)) return {};
     const QString ext = QFileInfo(path).suffix().toLower();
 
-    if (sys == "n64") {                            // z64 (big endian), v64 (byte-swapped), n64 (little endian)
+    if (sys == "n64") {                              // z64 (big endian), v64 (bytes trocados), n64 (little endian)
         QByteArray h = readAt(f, 0, 0x40);
         if (h.size() < 0x40) return {};
         const QByteArray m = h.left(4);
@@ -48,29 +48,29 @@ QString RomInfo::internalName(const QString& path, const QString& sys) {
         return clean(h.mid(0x20, 20));
     }
     if (sys == "gc" || sys == "wii") {
-        if (ext != "iso" && ext != "gcm" && ext != "wbfs") return {};   // rvz/ciso/gcz are compressed
+        if (ext != "iso" && ext != "gcm" && ext != "wbfs") return {};   // rvz/ciso/gcz são comprimidos
         return clean(readAt(f, (ext == "wbfs" ? 0x200 : 0) + 0x20, 64));
     }
     if (sys == "gb" || sys == "gbc") {
         QByteArray t = readAt(f, 0x134, 16);
-        if (t.size() == 16 && static_cast<uchar>(t[15]) >= 0x80) t.chop(1);   // GBC flag byte
+        if (t.size() == 16 && static_cast<uchar>(t[15]) >= 0x80) t.chop(1);   // byte de flag do GBC
         return clean(t);
     }
     if (sys == "gba") return clean(readAt(f, 0xA0, 12));
     if (sys == "nds") return clean(readAt(f, 0x00, 12));
-    if (sys == "snes") {                           // header at 0x7FC0 (LoROM) or 0xFFC0 (HiROM), with/without 512 extra bytes
+    if (sys == "snes") {                             // cabeçalho em 0x7FC0 (LoROM) ou 0xFFC0 (HiROM), com/sem 512 bytes extras
         for (qint64 base : {0x7FC0, 0xFFC0, 0x7FC0 + 512, 0xFFC0 + 512}) {
             const QByteArray h = readAt(f, base, 32);
             if (h.size() < 32) continue;
             auto u16 = [&](int i) { return quint16(static_cast<uchar>(h[i]) | (static_cast<uchar>(h[i + 1]) << 8)); };
-            if (quint16(u16(0x1C) + u16(0x1E)) == 0xFFFF) return clean(h.left(21));   // checksum complement matches
+            if (quint16(u16(0x1C) + u16(0x1E)) == 0xFFFF) return clean(h.left(21));   // complemento do checksum confere
         }
         return {};
     }
     if (sys == "genesis") {
         if (ext == "smd") return {};
         if (!readAt(f, 0x100, 4).startsWith("SEGA")) return {};
-        QString n = clean(readAt(f, 0x150, 48));                             // international name
+        QString n = clean(readAt(f, 0x150, 48));                                   // nome internacional
         return n.isEmpty() ? clean(readAt(f, 0x120, 48)) : n;
     }
     return {};

@@ -3,6 +3,8 @@
 #include "RomInfo.h"
 #include <QCryptographicHash>
 #include <QDirIterator>
+#include <QCoreApplication>
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QRegularExpression>
@@ -12,7 +14,7 @@ QString Game::key() const {
     return QString::fromLatin1(QCryptographicHash::hash(path.toUtf8(), QCryptographicHash::Sha1).toHex());
 }
 
-// GameCube/Wii ISOs have a "magic signature" in the header
+// ISOs de GameCube/Wii trazem uma "assinatura mágica" no cabeçalho
 static QString headerSystem(const QString& path) {
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly)) return {};
@@ -36,7 +38,7 @@ static const SystemDef* detect(const QString& path) {
         const QString h = headerSystem(path);
         for (auto* s : cand) if (s->id == h) return s;
     }
-    // ambiguous extension: uses folder names ("PS2", "GameCube"...) as a hint
+    // extensão ambígua: usa o nome das pastas ("PS2", "GameCube"...) como pista
     const QStringList parts = QFileInfo(path).absolutePath().toLower().split('/');
     const SystemDef* best = nullptr;
     int bestScore = 0;
@@ -132,4 +134,53 @@ void Library::resetPlayTime(const Game& g) {
     QSettings s;
     s.remove("play/" + g.key() + "/secs");
     s.remove("play/" + g.key() + "/last");
+}
+
+QString Library::detectSystemId(const QString& path) {
+    const SystemDef* s = detect(path);
+    return s ? s->id : QString();
+}
+
+static bool copyChunked(const QString& src, const QString& dst, const std::function<bool()>& canceled, QString* err) {
+    QFile in(src), out(dst);
+    if (!in.open(QIODevice::ReadOnly)) { if (err) *err = "Não consegui abrir " + src; return false; }
+    if (!out.open(QIODevice::WriteOnly)) { if (err) *err = "Não consegui criar " + dst; return false; }
+    while (!in.atEnd()) {
+        const QByteArray buf = in.read(4 * 1024 * 1024);
+        if (buf.isEmpty() && !in.atEnd()) { out.close(); QFile::remove(dst); if (err) *err = "Erro de leitura em " + src; return false; }
+        if (out.write(buf) != buf.size()) { out.close(); QFile::remove(dst); if (err) *err = "Sem espaço ou erro de escrita em " + dst; return false; }
+        QCoreApplication::processEvents();
+        if (canceled && canceled()) { out.close(); QFile::remove(dst); if (err) *err = "Cancelado"; return false; }
+    }
+    return true;
+}
+
+bool Library::importFile(const QString& src, const QString& destDir, bool move, const std::function<bool()>& canceled, QString* error) {
+    const SystemDef* s = detect(src);
+    QString folder = s ? s->name : QString("Outros");
+    folder.replace('/', '-').replace('\\', '-');
+    const QString dir = destDir + "/" + folder;
+    QDir().mkpath(dir);
+
+    QStringList files = {src};
+    if (QFileInfo(src).suffix().toLower() == "cue") {   // .cue aponta para um ou mais .bin
+        QFile cue(src);
+        if (cue.open(QIODevice::ReadOnly)) {
+            const QString txt = QString::fromUtf8(cue.readAll());
+            QRegularExpression re(R"re(FILE\s+"([^"]+)")re", QRegularExpression::CaseInsensitiveOption);
+            auto it = re.globalMatch(txt);
+            while (it.hasNext()) {
+                const QString ref = QFileInfo(src).absolutePath() + "/" + QFileInfo(it.next().captured(1)).fileName();
+                if (QFile::exists(ref) && !files.contains(ref)) files << ref;
+            }
+        }
+    }
+    for (const QString& f : files) {
+        const QString target = dir + "/" + QFileInfo(f).fileName();
+        if (QFile::exists(target)) { if (error) *error = "já existe: " + QFileInfo(f).fileName(); return false; }
+        if (move && QFile::rename(f, target)) continue;                 // mesmo disco: instantâneo
+        if (!copyChunked(f, target, canceled, error)) return false;
+        if (move) QFile::remove(f);                                     // outro disco: copiou, agora apaga a origem
+    }
+    return true;
 }

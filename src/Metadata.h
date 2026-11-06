@@ -7,8 +7,9 @@
 #include <QPixmap>
 #include <QQueue>
 #include <functional>
+#include <memory>
 
-// Game metadata: custom > IGDB > libretro-thumbnails/Wikipedia. Local cache + queue with progress.
+// Metadados dos jogos: personalizado > IGDB > libretro-thumbnails/Wikipédia. Cache local + fila com progresso.
 class Metadata : public QObject {
     Q_OBJECT
 public:
@@ -17,15 +18,15 @@ public:
 
     void enqueueAll(const QList<Game>& games);
     void requestIcon(const Game& g);
-    void requestBanner(const Game& g);                 // immediate (selected game)
+    void requestBanner(const Game& g);               // imediato (jogo selecionado)
     void requestText(const Game& g);
-    void loadCachedIcons(const QList<Game>& games);  // disk only, no network
-    void refreshGame(const Game& g);                 // clears automatic cache and downloads again
-    void resetGame(const Game& g);                     // also clears everything customized by the user
+    void loadCachedIcons(const QList<Game>& games);  // só do disco, sem rede
+    void refreshGame(const Game& g);                 // apaga o cache automático e baixa de novo
+    void resetGame(const Game& g);                   // apaga também tudo que foi personalizado
     void clearFailures();
     void clearCache();
     QString cacheDir() const;
-    QString customDir() const;                         // images chosen by the user
+    QString customDir() const;                       // imagens escolhidas pelo usuário
     qint64 cacheBytes() const;
 
 signals:
@@ -45,6 +46,13 @@ private:
     void fetchText(const Game& g, Cb done);
     void fetchWikipedia(const Game& g, const QString& cache, Cb done);
     void tryUrls(const Game& g, int kind, QList<QUrl> urls, const QString& cache, Cb done);
+
+    // lista de imagens do libretro-thumbnails por console/pasta (para achar o jogo por nome aproximado)
+    struct Listing { QStringList names, norms; };
+    void loadListing(const QString& thumbDir, const QString& dir, std::function<void(std::shared_ptr<Listing>)> cb);
+    void libretroUrls(const Game& g, int kind, std::function<void(QList<QUrl>)> cb);
+    QHash<QString, std::shared_ptr<Listing>> listings_;
+    QHash<QString, QList<std::function<void(std::shared_ptr<Listing>)>>> listPending_;
     QNetworkAccessManager nam_;
     Igdb* igdb_;
     QQueue<Task> queue_;

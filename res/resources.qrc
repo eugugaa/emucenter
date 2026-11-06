@@ -1,10 +1,9 @@
-<RCC>
-    <qresource prefix="/">
-        <file alias="logo_icon.png">logo_icon.png</file>
-        <file alias="logo_text.png">logo_text.png</file>
-        <file alias="logo_full.png">logo_full.png</file>
-        <file alias="app_icon.png">app_icon.png</file>
-        <file alias="themes/all/theme-all.css">../themes/all/theme-all.css</file>
-        <file alias="themes/normal/theme-ctrls.css">../themes/normal/theme-ctrls.css</file>
-    </qresource>
-</RCC>
+<RCC><qresource prefix="/">
+<file alias="logo_icon.png">logo_icon.png</file>
+<file alias="logo_text.png">logo_text.png</file>
+<file alias="logo_full.png">logo_full.png</file>
+<file alias="app_icon.png">app_icon.png</file>
+<file alias="themes/all/exemplo-tudo.css">../themes/all/exemplo-tudo.css</file>
+<file alias="themes/normal/exemplo-botoes-arredondados.css">../themes/normal/exemplo-botoes-arredondados.css</file>
+<file alias="themes/normal/exemplo-verde-neon.css">../themes/normal/exemplo-verde-neon.css</file>
+</qresource></RCC>

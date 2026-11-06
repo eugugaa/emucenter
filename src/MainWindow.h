@@ -24,12 +24,13 @@ class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
     MainWindow();
-    void bringToFront();   // used when another instance tries to open
+    void bringToFront();   // usado quando outra instância tenta abrir
 protected:
     void closeEvent(QCloseEvent*) override;
     bool eventFilter(QObject*, QEvent*) override;
 private slots:
     void addRomFolder();
+    void importRoms();
     void rescan();
     void onSelect();
     void play();

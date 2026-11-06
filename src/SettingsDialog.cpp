@@ -1,4 +1,5 @@
 #include "SettingsDialog.h"
+#include "DiscordRpc.h"
 #include "I18n.h"
 #include "Theme.h"
 #include <QCheckBox>
@@ -73,7 +74,6 @@ SettingsDialog::SettingsDialog(EmulatorManager* emu, Metadata* meta, Igdb* igdb,
     });
 }
 
-// ---------------- General ----------------
 QWidget* SettingsDialog::buildGeneral() {
     auto* w = new QWidget; auto* l = new QVBoxLayout(w);
     QSettings s;
@@ -81,6 +81,7 @@ QWidget* SettingsDialog::buildGeneral() {
     auto* lang = new QComboBox;
     lang->addItem("Português (Brasil)", "pt");
     lang->addItem("English", "en");
+    lang->addItem("Español", "es");
     lang->setCurrentIndex(lang->findData(I18n::lang()));
     auto* rowL = new QHBoxLayout; rowL->addWidget(new QLabel(T("Language:"))); rowL->addWidget(lang, 1);
     l->addLayout(rowL);
@@ -97,10 +98,10 @@ QWidget* SettingsDialog::buildGeneral() {
         l->addWidget(c);
         return c;
     };
-    check(T("Custom title bar (buttons embedded in the top) — restart to apply"), "frameless", true);
-    check(T("Continue in background (tray) when closing the window"), "background", true);
+    check(T("Custom title bar (built-in buttons on top) — restart to apply"), "frameless", true);
+    check(T("Keep running in the background (tray) when the window is closed"), "background", true);
     check(T("Show notifications (metadata ready, emulator updates)"), "notify", true);
-    check(T("Check for emulator updates on startup"), "autoEmuUpdate", false);
+    check(T("Check emulator updates on startup"), "autoEmuUpdate", false);
 
     l->addSpacing(12);
     auto* arch = new QComboBox;
@@ -110,14 +111,13 @@ QWidget* SettingsDialog::buildGeneral() {
     auto* rowA = new QHBoxLayout;
     rowA->addWidget(new QLabel(T("Emulator packages for:"))); rowA->addWidget(arch, 1);
     l->addLayout(rowA);
-    auto* det = new QLabel(T("Detected processor: %1  •  using: %2").arg(QSysInfo::currentCpuArchitecture(), emu_->arch()));
+    auto* det = new QLabel(T("Detected CPU: %1  •  using: %2").arg(QSysInfo::currentCpuArchitecture(), emu_->arch()));
     det->setObjectName("muted");
     l->addWidget(det);
     l->addStretch();
     return w;
 }
 
-// ---------------- Folders ----------------
 void SettingsDialog::refreshRomList() {
     romList_->clear();
     romList_->addItems(QSettings().value("romDirs").toStringList());
@@ -125,7 +125,7 @@ void SettingsDialog::refreshRomList() {
 
 QWidget* SettingsDialog::buildFolders() {
     auto* w = new QWidget; auto* l = new QVBoxLayout(w);
-    l->addWidget(new QLabel(T("Folders containing your ROMs (the app searches subfolders too):")));
+    l->addWidget(new QLabel(T("Folders with your ROMs (subfolders are scanned too):")));
     romList_ = new QListWidget;
     l->addWidget(romList_, 1);
     refreshRomList();
@@ -151,14 +151,14 @@ QWidget* SettingsDialog::buildFolders() {
     });
 
     l->addSpacing(14);
-    l->addWidget(new QLabel(T("Emulators base folder (each emulator goes into a separate subfolder):")));
+    l->addWidget(new QLabel(T("Emulators base folder (each emulator gets its own subfolder):")));
     rootLbl_ = new QLabel(emu_->root());
     rootLbl_->setObjectName("muted");
     auto* r2 = new QHBoxLayout;
     auto* ch = btn(T("Change…")); auto* op = btn(T("Open folder"));
     r2->addWidget(rootLbl_, 1); r2->addWidget(ch); r2->addWidget(op);
     l->addLayout(r2);
-    l->addWidget(new QLabel(T("Tip: each emulator's folder can also be chosen individually in the Emulators tab.")));
+    l->addWidget(new QLabel(T("Tip: each emulator's folder can also be set individually in the Emulators tab.")));
     connect(ch, &QPushButton::clicked, this, [this] {
         const QString d = QFileDialog::getExistingDirectory(this, T("Choose the emulators base folder"), emu_->root());
         if (d.isEmpty()) return;
@@ -168,12 +168,11 @@ QWidget* SettingsDialog::buildFolders() {
     return w;
 }
 
-// ---------------- Emulators ----------------
 QWidget* SettingsDialog::buildEmus() {
     auto* w = new QWidget; auto* l = new QVBoxLayout(w);
     auto* top = new QHBoxLayout;
     auto* chk = btn(T("Check for updates"));
-    top->addWidget(new QLabel(T("Click on the emulator name to open its official website.")), 1);
+    top->addWidget(new QLabel(T("Click an emulator's name to open its official website.")), 1);
     top->addWidget(chk);
     l->addLayout(top);
     emuTable_ = new QTableWidget(Catalog::emulators().size(), 4);
@@ -229,7 +228,7 @@ void SettingsDialog::refreshEmuTable() {
             emu_->importExe(id, p); refreshEmuTable(); emit emulatorsChanged();
         });
         connect(fo, &QPushButton::clicked, this, [this, id] {
-            const QString d = QFileDialog::getExistingDirectory(this, T("Folder for this emulator"), emu_->emuDir(id));
+            const QString d = QFileDialog::getExistingDirectory(this, T("This emulator's folder"), emu_->emuDir(id));
             if (d.isEmpty()) return;
             emu_->setEmuDir(id, d); refreshEmuTable(); emit emulatorsChanged();
         });
@@ -240,7 +239,6 @@ void SettingsDialog::refreshEmuTable() {
     emuTable_->resizeColumnToContents(3);
 }
 
-// ---------------- Appearance ----------------
 void SettingsDialog::refreshThemeButtons() {
     auto clear = [](QGridLayout* g) {
         while (QLayoutItem* it = g->takeAt(0)) { delete it->widget(); delete it; }
@@ -285,10 +283,10 @@ QWidget* SettingsDialog::buildAppearance() {
     l->addWidget(grad);
 
     l->addSpacing(8);
-    l->addWidget(new QLabel(T("Complete themes — themes/all (change EVERYTHING: colors, game list, groups, dividers, gradient, logo)")));
+    l->addWidget(new QLabel(T("Full themes — themes/all (change EVERYTHING: colors, game list, groups, separators, gradient, logo)")));
     allGrid_ = new QGridLayout; l->addLayout(allGrid_);
     l->addSpacing(8);
-    l->addWidget(new QLabel(T("Button and font packages — themes/normal (applied on top; work together with complete themes)")));
+    l->addWidget(new QLabel(T("Theme packs (CSS) — applied on top of the theme, great for customizing buttons")));
     normalGrid_ = new QGridLayout; l->addLayout(normalGrid_);
 
     auto* row = new QHBoxLayout;
@@ -296,8 +294,8 @@ QWidget* SettingsDialog::buildAppearance() {
     auto* oa = btn(T("Open themes/all")); auto* on = btn(T("Open themes/normal"));
     row->addWidget(imp); row->addWidget(oa); row->addWidget(on); row->addStretch();
     l->addSpacing(8); l->addLayout(row);
-    auto* hint = new QLabel(T("The app automatically detects whether the file is complete (has :root with variables) or just buttons. "
-                            "If a normal file has complete theme variables, that part is moved to themes/all."));
+    auto* hint = new QLabel(T("EmuCenter detects on its own whether a file is a full theme (has :root variables) or buttons only. "
+                              "If a normal file has full-theme variables, that part is moved to themes/all."));
     hint->setObjectName("muted"); hint->setWordWrap(true);
     l->addWidget(hint);
     l->addStretch();
@@ -311,7 +309,7 @@ QWidget* SettingsDialog::buildAppearance() {
         refreshThemeButtons();
     });
     auto open = [](Theme::Kind k) {
-        QString dir = Theme::roots().last() + (k == Theme::All ? "/all" : "/normal");   // folder next to .exe, if it exists
+        QString dir = Theme::roots().last() + (k == Theme::All ? "/all" : "/normal");
         if (!QDir(dir).exists()) { dir = Theme::importDir(k); QDir().mkpath(dir); }
         QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
     };
@@ -320,7 +318,6 @@ QWidget* SettingsDialog::buildAppearance() {
     return w;
 }
 
-// ---------------- Metadata + IGDB ----------------
 QWidget* SettingsDialog::buildMeta() {
     auto* w = new QWidget; auto* l = new QVBoxLayout(w);
     QSettings s;
@@ -331,17 +328,17 @@ QWidget* SettingsDialog::buildMeta() {
         lay->addWidget(c);
     };
     chk(T("Download metadata automatically (on startup and when adding games), in the background"), "autoMeta", true, l);
-    chk(T("Use the name stored inside the ROM (instead of the filename)"), "useInternalName", true, l);
+    chk(T("Use the name stored inside the ROM (instead of the file name)"), "useInternalName", true, l);
 
-    auto* hrs = new QSpinBox; hrs->setRange(0, 720); hrs->setSpecialValueText(T("disabled")); hrs->setSuffix(T(" h"));
+    auto* hrs = new QSpinBox; hrs->setRange(0, 720); hrs->setSpecialValueText(T("off")); hrs->setSuffix(T(" h"));
     hrs->setValue(s.value("metaHours", 0).toInt());
     connect(hrs, &QSpinBox::valueChanged, this, [this](int v) { QSettings().setValue("metaHours", v); emit generalChanged(); });
-    auto* rh = new QHBoxLayout; rh->addWidget(new QLabel(T("Repeat check every:"))); rh->addWidget(hrs); rh->addStretch();
+    auto* rh = new QHBoxLayout; rh->addWidget(new QLabel(T("Repeat the check every:"))); rh->addWidget(hrs); rh->addStretch();
     l->addLayout(rh);
 
-    auto* box = new QGroupBox(T("IGDB (names, box arts, banners and descriptions)"));
+    auto* box = new QGroupBox(T("IGDB (names, covers, banners and descriptions)"));
     auto* bl = new QVBoxLayout(box);
-    auto* info = new QLabel(T("Create a free app at <a href=\"https://dev.twitch.tv/console\">dev.twitch.tv/console</a> and paste the Client ID and Client Secret.")); 
+    auto* info = new QLabel(T("Create a free app at <a href=\"https://dev.twitch.tv/console\">dev.twitch.tv/console</a> and paste the Client ID and Client Secret."));
     info->setOpenExternalLinks(true); info->setWordWrap(true);
     bl->addWidget(info);
     auto* id = new QLineEdit(s.value("igdb/clientId").toString()); id->setPlaceholderText("Client ID");
@@ -350,7 +347,7 @@ QWidget* SettingsDialog::buildMeta() {
     connect(sec, &QLineEdit::textChanged, this, [](const QString& v) { QSettings s; s.setValue("igdb/clientSecret", v.trimmed()); s.remove("igdb/token"); });
     bl->addWidget(id); bl->addWidget(sec);
     chk(T("Use IGDB for images and descriptions"), "useIgdb", true, bl);
-    chk(T("Use IGDB name as the game name"), "useIgdbName", true, bl);
+    chk(T("Use the IGDB name as the game name"), "useIgdbName", true, bl);
     auto* test = btn(T("Test connection"));
     auto* res = new QLabel; res->setObjectName("muted"); res->setWordWrap(true);
     auto* tr = new QHBoxLayout; tr->addWidget(test); tr->addWidget(res, 1);
@@ -378,7 +375,6 @@ QWidget* SettingsDialog::buildMeta() {
     return w;
 }
 
-// ---------------- Advanced: when and how things start ----------------
 QWidget* SettingsDialog::buildAdvanced() {
     auto* w = new QWidget; auto* l = new QVBoxLayout(w);
     QSettings s;
@@ -391,7 +387,7 @@ QWidget* SettingsDialog::buildAdvanced() {
         lay->addWidget(c);
         return c;
     };
-    auto* os = chk(T("Start EmuCenter along with Windows"), "startWithOS", false, v1);
+    auto* os = chk(T("Start EmuCenter with Windows"), "startWithOS", false, v1);
 #ifdef Q_OS_WIN
     connect(os, &QCheckBox::toggled, this, [](bool on) {
         QSettings run("HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", QSettings::NativeFormat);
@@ -401,7 +397,7 @@ QWidget* SettingsDialog::buildAdvanced() {
 #else
     os->setEnabled(false);
 #endif
-    chk(T("Start minimized in the tray"), "startMinimized", false, v1);
+    chk(T("Start minimized to the tray"), "startMinimized", false, v1);
 
     auto spin = [&](const QString& label, const char* key, int def, int max, QLayout* lay) {
         auto* sp = new QSpinBox; sp->setRange(0, max); sp->setSuffix(T(" s")); sp->setValue(s.value(key, def).toInt());
@@ -409,7 +405,7 @@ QWidget* SettingsDialog::buildAdvanced() {
         auto* r = new QHBoxLayout; r->addWidget(new QLabel(label), 1); r->addWidget(sp);
         lay->addItem(r);
     };
-    spin(T("Wait before starting metadata download:"), "startDelayMeta", 3, 600, v1);
+    spin(T("Wait before starting metadata downloads:"), "startDelayMeta", 3, 600, v1);
     spin(T("Wait before checking emulator updates:"), "startDelayUpdate", 10, 600, v1);
     l->addWidget(g1);
 
@@ -420,7 +416,32 @@ QWidget* SettingsDialog::buildAdvanced() {
     v2->addLayout(r);
     l->addWidget(g2);
 
-    auto* g3 = new QGroupBox(T("Maintenance")); auto* v3 = new QVBoxLayout(g3);
+    auto* gd = new QGroupBox(T("Discord Rich Presence")); auto* vd = new QVBoxLayout(gd);
+    auto dchk = [&](const QString& text, const char* key, bool def) {
+        auto* ck = new QCheckBox(text);
+        ck->setChecked(s.value(key, def).toBool());
+        connect(ck, &QCheckBox::toggled, this, [key](bool v) { QSettings().setValue(key, v); DiscordRpc::instance().applySettings(); });
+        vd->addWidget(ck);
+    };
+    dchk(T("Show what I'm playing on Discord"), "discord/enabled", false);
+    auto* appId = new QLineEdit(s.value("discord/appId").toString());
+    appId->setPlaceholderText(DiscordRpc::instance().effectiveAppId().isEmpty() ? T("Application ID (discord.com/developers)")
+                                                                                : T("empty = use the ID embedded in the .exe"));
+    connect(appId, &QLineEdit::editingFinished, this, [appId] { QSettings().setValue("discord/appId", appId->text().trimmed()); DiscordRpc::instance().applySettings(); });
+    vd->addWidget(appId);
+    dchk(T("Show the game name"), "discord/showGame", true);
+    dchk(T("Show the console"), "discord/showConsole", true);
+    dchk(T("Show play time"), "discord/showTimer", true);
+    dchk(T("Also show when I'm just browsing the library"), "discord/showBrowsing", true);
+    auto* dst = new QLabel(DiscordRpc::instance().status()); dst->setObjectName("muted"); dst->setWordWrap(true);
+    connect(&DiscordRpc::instance(), &DiscordRpc::statusChanged, dst, &QLabel::setText);
+    auto* reconnect = btn(T("Reconnect"));
+    connect(reconnect, &QPushButton::clicked, this, [] { DiscordRpc::instance().applySettings(); });
+    auto* dr = new QHBoxLayout; dr->addWidget(reconnect); dr->addWidget(dst, 1);
+    vd->addLayout(dr);
+    l->addWidget(gd);
+
+    auto* g3 = new QGroupBox(T("Maintenance")); auto* v3 = new QHBoxLayout(g3);
     auto* data = btn(T("Open data folder"));
     auto* rst = btn(T("Restore default theme"));
     v3->addWidget(data); v3->addWidget(rst); v3->addStretch();

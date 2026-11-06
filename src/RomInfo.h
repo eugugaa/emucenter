@@ -2,6 +2,6 @@
 #include <QString>
 
 namespace RomInfo {
-// Reads the name stored INSIDE the ROM (header). Empty if the format doesn't have one or is unreadable.
+// Lê o nome gravado DENTRO da ROM (cabeçalho). Vazio se o formato não tem/for ilegível.
 QString internalName(const QString& path, const QString& systemId);
 }

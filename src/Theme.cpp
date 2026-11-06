@@ -16,7 +16,7 @@ static Palette g_cur;
 static bool g_set = false;
 static QString g_notice;
 
-// ------------------------------------------------------------------ built-in palettes
+// ------------------------------------------------------------------ paletas embutidas
 QList<Palette> Theme::builtins() {
     auto mk = [](const char* id, const char* name, const char* bg, const char* panel, const char* panel2, const char* border,
                  const char* text, const char* muted, const char* accent, const char* groupBg, const char* rowDark,
@@ -32,13 +32,13 @@ QList<Palette> Theme::builtins() {
         p.separator = border;
         p.ok = "#5fd38d"; p.warn = "#f2c14e"; p.err = "#ff6b6b";
         p.plate = "#e8ecf6";
-        if (logo[0]) p.logoColor = logo;   // empty = original logo
+        if (logo[0]) p.logoColor = logo;   // vazio = logo original
         return p;
     };
     QList<Palette> v;
-    v << mk("grafite", "Graphite Blue", "#1b1f2b", "#232a3a", "#2d3550", "#3b4562", "#e6eaf5", "#98a2bd", "#5b8cff", "#2a3350", "#141824", "#dbe4ff");
-    v << mk("meianoite", "Midnight", "#0d1017", "#141824", "#1c2233", "#2a3248", "#e4e8f4", "#8791a8", "#7a8cff", "#1a2036", "#090b10", "#8fa6ff");
-    Palette c = mk("claro", "Light Gray", "#e6e6ea", "#f3f3f6", "#dcdce2", "#c4c4cc", "#14161c", "#666a75", "#3b6fe0", "#d2d4de", "#262a36", "");
+    v << mk("grafite", "Azul Grafite", "#1b1f2b", "#232a3a", "#2d3550", "#3b4562", "#e6eaf5", "#98a2bd", "#5b8cff", "#2a3350", "#141824", "#dbe4ff");
+    v << mk("meianoite", "Meia-noite", "#0d1017", "#141824", "#1c2233", "#2a3248", "#e4e8f4", "#8791a8", "#7a8cff", "#1a2036", "#090b10", "#8fa6ff");
+    Palette c = mk("claro", "Cinza Claro", "#e6e6ea", "#f3f3f6", "#dcdce2", "#c4c4cc", "#14161c", "#666a75", "#3b6fe0", "#d2d4de", "#262a36", "");
     c.ok = "#1b7f3b"; c.warn = "#b8860b"; c.err = "#b3261e";
     c.plate = "#f3f3f6";
     v << c;
@@ -55,7 +55,7 @@ bool Theme::gradientOn() {
     return p.gradient >= 0 ? p.gradient == 1 : QSettings().value("gradient", true).toBool();
 }
 
-// ------------------------------------------------------------------ theme folders (themes/all and themes/normal)
+// ------------------------------------------------------------------ pastas de temas (themes/all e themes/normal)
 QStringList Theme::roots() {
     return {QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/themes",
             QCoreApplication::applicationDirPath() + "/themes"};
@@ -81,7 +81,7 @@ QString Theme::pathOf(Kind k, const QString& f) {
 }
 QString Theme::notice() { return g_notice; }
 
-// ------------------------------------------------------------------ CSS reading: variables in :root + QSS
+// ------------------------------------------------------------------ leitura do CSS: variáveis em :root + QSS
 struct Parsed { QMap<QString, QString> vars; QString qss; bool hadVars = false; };
 
 static const QRegularExpression& rootRe() {
@@ -91,7 +91,7 @@ static const QRegularExpression& rootRe() {
 
 static Parsed parseCss(QString css) {
     Parsed r;
-    css.remove(QRegularExpression(R"(/\*.*?\*/)", QRegularExpression::DotMatchesEverythingOption));   // comments
+    css.remove(QRegularExpression(R"(/\*.*?\*/)", QRegularExpression::DotMatchesEverythingOption));   // comentários
     auto it = rootRe().globalMatch(css);
     while (it.hasNext()) {
         r.hadVars = true;
@@ -137,7 +137,7 @@ static QString readFile(const QString& path) {
     return f.open(QIODevice::ReadOnly) ? QString::fromUtf8(f.readAll()) : QString();
 }
 
-// "Normal" file containing "all" things (:root variables): this part goes to themes/all.
+// Arquivo de "normal" com coisas de "all" (variáveis :root): essa parte vai para themes/all.
 static void transferToAll(const QString& normalPath, const QString& raw, const QString& fileName) {
     QStringList blocks;
     auto it = rootRe().globalMatch(raw);
@@ -146,21 +146,21 @@ static void transferToAll(const QString& normalPath, const QString& raw, const Q
 
     QDir().mkpath(Theme::importDir(Theme::All));
     QString name = fileName;
-    if (QFile::exists(Theme::importDir(Theme::All) + "/" + name)) name = QFileInfo(fileName).completeBaseName() + "-from-normal.css";
+    if (QFile::exists(Theme::importDir(Theme::All) + "/" + name)) name = QFileInfo(fileName).completeBaseName() + "-do-normal.css";
     QFile out(Theme::importDir(Theme::All) + "/" + name);
     if (!out.open(QIODevice::WriteOnly)) return;
-    out.write(("/* Automatically moved from themes/normal/" + fileName + " */\n" + blocks.join("\n\n") + "\n").toUtf8());
+    out.write(("/* Movido automaticamente de themes/normal/" + fileName + " */\n" + blocks.join("\n\n") + "\n").toUtf8());
     out.close();
 
     QString rest = raw;
     rest.remove(rootRe());
     QFile back(normalPath);
     if (back.open(QIODevice::WriteOnly | QIODevice::Truncate))
-        back.write(("/* The :root variables from here were moved to themes/all/" + name + " */\n" + rest).toUtf8());
+        back.write(("/* As variáveis :root daqui foram movidas para themes/all/" + name + " */\n" + rest).toUtf8());
 
-    g_notice = T("Part of '%1' was a complete theme and was moved to themes/all/%2.").arg(fileName, name);
+    g_notice = T("Parte de '%1' era de tema completo e foi movida para themes/all/%2.").arg(fileName, name);
     QSettings st;
-    if (st.value("themeAll").toString().isEmpty()) st.setValue("themeAll", name);   // keeps the visual appearance
+    if (st.value("themeAll").toString().isEmpty()) st.setValue("themeAll", name);   // mantém o visual
 }
 
 Theme::Kind Theme::importFile(const QString& path) {
@@ -172,19 +172,19 @@ Theme::Kind Theme::importFile(const QString& path) {
     return k;
 }
 
-// ------------------------------------------------------------------ colored logo according to the theme
+// ------------------------------------------------------------------ logo colorida conforme o tema
 QPixmap Theme::logo(const QPixmap& src) {
     const Palette& p = current();
     if (!p.logoColor.isValid() || src.isNull()) return src;
     QImage img = src.toImage().convertToFormat(QImage::Format_ARGB32_Premultiplied);
     QPainter pt(&img);
-    pt.setCompositionMode(QPainter::CompositionMode_SourceIn);   // keeps only the shape (alpha) of the logo
+    pt.setCompositionMode(QPainter::CompositionMode_SourceIn);   // mantém só o formato (alfa) da logo
     pt.fillRect(img.rect(), p.logoColor);
     pt.end();
     return QPixmap::fromImage(img);
 }
 
-// ------------------------------------------------------------------ base QSS
+// ------------------------------------------------------------------ QSS base
 static QString buildStyle(const Palette& p, bool gradient) {
     auto grad = [](const QColor& a, const QColor& b) {
         return QString("qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 %1, stop:1 %2)").arg(a.name(), b.name());
@@ -198,7 +198,7 @@ static QString buildStyle(const Palette& p, bool gradient) {
     const QString logoBg = p.logoColor.isValid() ? "transparent" : p.plate.name();
 
     QString s = R"(
-- { font-family: "Segoe UI","Inter","Noto Sans",sans-serif; font-size: 14px; color: @text; }
+* { font-family: "Segoe UI","Inter","Noto Sans",sans-serif; font-size: 14px; color: @text; }
 QMainWindow, QDialog, QWidget#root { background: @bgFill; }
 QWidget#side { background: @panelFill; border-right: 1px solid @border; }
 QWidget#titlebar { background: @titleFill; border-bottom: 1px solid @border; }
@@ -271,7 +271,7 @@ void Theme::apply() {
     Palette p = builtins().first();
     for (const auto& b : builtins()) if (b.id == id) p = b;
 
-    // "normal" with "all" variables: transfers to themes/all (and applies the variables anyway)
+    // "normal" com variáveis de "all": transfere para themes/all (e aplica as variáveis mesmo assim)
     Parsed normal, all;
     const QString nFile = st.value("themeNormal").toString();
     const QString nPath = pathOf(Normal, nFile);
