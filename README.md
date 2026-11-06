@@ -54,7 +54,7 @@ Extraction of .zip and .7z archives uses the tar utility available in Windows 10
 
 ## License
 
-[GNU General Public License v2.0](https://github.com/eugugaa/emucenter/blob/main/LICENSE)
+[EmuCenter Custom License](https://github.com/eugugaa/emucenter/blob/main/LICENSE)
 
 <p align="center">
 made by gust!
