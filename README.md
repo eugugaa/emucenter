@@ -34,14 +34,6 @@ The application automatically reads game names directly from supported ROM files
 
 EmuCenter is designed to make managing your emulation library simpler, more organized, and more convenient, while keeping you in control of your own game files and emulator configurations.
 
-## What's New in 0.3
-- Game names are read directly from ROM files (N64, GameCube, Wii, GB/GBC, GBA, DS, SNES, and Mega Drive).
-- Optional IGDB integration to retrieve game names, covers, banners, and descriptions.
-- Individual game settings, including name, description, icon, banner, emulator, and commands.
-- Advanced settings: start with Windows, start minimized, startup delays, and simultaneous downloads.
-- Support for custom themes in themes/all and themes/normal.
-- Single-instance system, preventing multiple instances of the application from running simultaneously.
-
 ## Configuration
 - Metadata: Configure your IGDB Client ID and Client Secret under Settings > Metadata.
 - Emulators: Configure the paths to the emulators used by the application.
