@@ -1,4 +1,4 @@
-/* themes/normal — changes control highlights to green */
+/* themes/normal — troca os destaques dos controles para verde */
 QPushButton:hover { border-color: #3ddc84; }
 QPushButton:checked { background: #3ddc84; color: #0b0d12; border-color: #3ddc84; }
 QProgressBar::chunk { background: #3ddc84; }

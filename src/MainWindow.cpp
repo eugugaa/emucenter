@@ -1,38 +1,35 @@
 #include "MainWindow.h"
+#include "DiscordRpc.h"
 #include "GameSettingsDialog.h"
 #include "I18n.h"
 #include "SettingsDialog.h"
 #include "Theme.h"
-#include <QActionGroup>
+#include "WelcomeDialog.h"
 #include <QApplication>
 #include <QClipboard>
 #include <QCloseEvent>
-#include <QDir>
-#include <QDirIterator>
 #include <QDesktopServices>
 #include <QDialog>
-#include <QDialogButtonBox>
+#include <QDir>
 #include <QElapsedTimer>
 #include <QFileDialog>
 #include <QFileInfo>
-#include <QFormLayout>
-#include <QInputDialog>
-#include <QProgressDialog>
 #include <QHBoxLayout>
+#include <QInputDialog>
 #include <QLabel>
-#include <QLineEdit>
-#include <QComboBox>
+#include <QLinearGradient>
 #include <QMenu>
 #include <QMessageBox>
 #include <QMouseEvent>
-#include <QLinearGradient>
 #include <QPainter>
 #include <QPainterPath>
 #include <QProcess>
 #include <QProgressBar>
+#include <QProgressDialog>
 #include <QPushButton>
 #include <QSettings>
 #include <QSplitter>
+#include <QStackedWidget>
 #include <QStandardPaths>
 #include <QStatusBar>
 #include <QStyledItemDelegate>
@@ -44,11 +41,15 @@
 #include <QUrl>
 #include <QVBoxLayout>
 #include <QWindow>
+#include <utility>
 
-// ---------------------------------------------------------------- Banner
 class Banner : public QWidget {
 public:
-    Banner() { setMinimumHeight(190); setMaximumHeight(280); logo_ = QPixmap(":/logo_icon.png"); }
+    Banner() {
+        setMinimumHeight(190);
+        setMaximumHeight(280);
+        logo_ = QPixmap(":/logo_icon.png");
+    }
     void setImage(const QPixmap& p) { pm_ = p; update(); }
 protected:
     void paintEvent(QPaintEvent*) override {
@@ -58,14 +59,16 @@ protected:
         const Palette& P = Theme::current();
         p.fillRect(rect(), P.panel2);
         if (pm_.isNull()) {
-            if (P.logoColor.isValid()) {   // logo colorida pelo tema, direto no fundo
+            if (P.logoColor.isValid()) {
                 const QPixmap s = Theme::logo(logo_).scaledToHeight(height() / 2, Qt::SmoothTransformation);
                 p.drawPixmap((width() - s.width()) / 2, (height() - s.height()) / 2, s);
-            } else {                       // logo original sobre uma placa clara
+            } else {
                 const int h = height() * 3 / 5;
                 QRect plate(0, 0, h * 5 / 4, h);
                 plate.moveCenter(rect().center());
-                p.setPen(Qt::NoPen); p.setBrush(P.plate); p.drawRoundedRect(plate, 16, 16);
+                p.setPen(Qt::NoPen);
+                p.setBrush(P.plate);
+                p.drawRoundedRect(plate, 16, 16);
                 const QPixmap s = logo_.scaled(plate.size() * 0.7, Qt::KeepAspectRatio, Qt::SmoothTransformation);
                 p.drawPixmap(plate.center().x() - s.width() / 2, plate.center().y() - s.height() / 2, s);
             }
@@ -73,37 +76,65 @@ protected:
             const QPixmap s = pm_.scaled(size(), Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
             p.drawPixmap((width() - s.width()) / 2, (height() - s.height()) / 2, s);
         }
-        QLinearGradient g(0, height() * 0.5, 0, height());   // esmaece o banner até a cor do fundo
-        QColor t = P.bg; t.setAlpha(0);
-        g.setColorAt(0, t); g.setColorAt(1, P.bg);
+        QLinearGradient g(0, height() * 0.5, 0, height());
+        QColor t = P.bg;
+        t.setAlpha(0);
+        g.setColorAt(0, t);
+        g.setColorAt(1, P.bg);
         p.fillRect(rect(), g);
     }
 private:
     QPixmap pm_, logo_;
 };
 
-// ---------------------------------------------------------------- Lista: linhas claro / escuro alternadas
+class BgWidget : public QWidget {
+public:
+    void setImage(const QString& path, int opacity) {
+        path_ = path;
+        opacity_ = opacity;
+        src_ = path.isEmpty() ? QPixmap() : QPixmap(path);
+        scaled_ = QPixmap();
+        update();
+    }
+protected:
+    void paintEvent(QPaintEvent*) override {
+        if (src_.isNull()) return;
+        if (scaled_.size() != size()) {
+            const QPixmap s = src_.scaled(size(), Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+            scaled_ = s.copy((s.width() - width()) / 2, (s.height() - height()) / 2, width(), height());
+        }
+        QPainter p(this);
+        p.setOpacity(opacity_ / 100.0);
+        p.drawPixmap(0, 0, scaled_);
+    }
+private:
+    QString path_;
+    int opacity_ = 25;
+    QPixmap src_, scaled_;
+};
+
 class GameDelegate : public QStyledItemDelegate {
 public:
     using QStyledItemDelegate::QStyledItemDelegate;
-    enum { Parity = Qt::UserRole + 1, NoEmu = Qt::UserRole + 2 };
+    enum { Parity = Qt::UserRole + 1, NoEmu = Qt::UserRole + 2, PlayText = Qt::UserRole + 3 };
     QSize sizeHint(const QStyleOptionViewItem&, const QModelIndex& i) const override {
         const Palette& P = Theme::current();
-        return QSize(0, i.parent().isValid() ? 54 + P.rowGap : 42);
+        return QSize(0, i.parent().isValid() ? Theme::rowHeight() + P.rowGap : 44);
     }
     void paint(QPainter* p, const QStyleOptionViewItem& o, const QModelIndex& i) const override {
         const Palette& P = Theme::current();
         p->save();
         p->setRenderHint(QPainter::Antialiasing);
         const int rad = P.rowRadius;
-        if (!i.parent().isValid()) {   // cabeçalho do console
+        if (!i.parent().isValid()) {
             const QRect g = o.rect.adjusted(8, 5, -8, -1);
             p->setPen(Qt::NoPen);
             p->setBrush(P.groupBg);
             p->drawRoundedRect(g, rad, rad);
             p->setBrush(P.accent);
             p->drawRoundedRect(QRect(g.left(), g.top() + 7, 4, g.height() - 14), 2, 2);
-            QFont f = o.font; f.setBold(true); p->setFont(f); p->setPen(P.groupText);
+            p->setFont(Theme::font(Theme::Title, 14, QFont::Bold));
+            p->setPen(P.groupText);
             const auto* tv = qobject_cast<const QTreeView*>(o.widget);
             const QString arrow = (tv && tv->isExpanded(i)) ? QString::fromUtf8("▾  ") : QString::fromUtf8("▸  ");
             p->drawText(g.adjusted(18, 0, -8, 0), Qt::AlignVCenter | Qt::AlignLeft, arrow + i.data().toString());
@@ -113,35 +144,52 @@ public:
             const bool dark = i.data(Parity).toInt() == 1;
             const QColor bg = sel ? P.rowSel : (dark ? P.rowDark : P.rowLight);
             QColor fg = sel ? P.rowSelText : (dark ? P.rowDarkText : P.rowLightText);
-            if (!sel && i.data(NoEmu).toBool()) fg = dark ? P.err : QColor("#b3261e");
+            if (!sel && i.data(NoEmu).toBool()) fg = P.err;
             p->setPen(Qt::NoPen);
             p->setBrush(bg);
             p->drawRoundedRect(row, rad, rad);
-            if (!sel && P.rowGap == 0) {   // sem espaço entre linhas: uma linha fina separa
+            if (!sel && P.rowGap == 0) {
                 p->setPen(P.separator);
                 p->drawLine(row.left() + rad, row.bottom(), row.right() - rad, row.bottom());
             }
-            const QRect ir(row.left() + 10, row.top() + (row.height() - 40) / 2, 40, 40);
-            QPainterPath path; path.addRoundedRect(ir, 7, 7);
+            const int isz = qMin(row.height() - 10, 44);
+            const QRect ir(row.left() + 10, row.top() + (row.height() - isz) / 2, isz, isz);
+            QPainterPath path;
+            path.addRoundedRect(ir, 7, 7);
             p->setClipPath(path);
-            p->fillRect(ir, dark ? QColor("#222733") : QColor("#c9cfdc"));
+            p->fillRect(ir, P.panel2);
             const QIcon ic = i.data(Qt::DecorationRole).value<QIcon>();
             if (!ic.isNull()) ic.paint(p, ir);
             p->setClipping(false);
+            const QString pt = i.data(PlayText).toString();
+            int right = row.right() - 12;
+            if (!pt.isEmpty()) {
+                p->setFont(Theme::font(Theme::Mono, 12));
+                const int w = QFontMetrics(p->font()).horizontalAdvance(pt);
+                QColor mc = fg;
+                mc.setAlpha(170);
+                p->setPen(mc);
+                p->drawText(QRect(right - w, row.top(), w, row.height()), Qt::AlignVCenter | Qt::AlignRight, pt);
+                right -= w + 10;
+            }
+            const QFont tf = Theme::font(Theme::Body, 14, sel ? QFont::DemiBold : QFont::Normal);
+            p->setFont(tf);
             p->setPen(fg);
             const int tx = ir.right() + 12;
-            const QString t = o.fontMetrics.elidedText(i.data().toString(), Qt::ElideRight, row.right() - tx - 10);
-            p->drawText(QRect(tx, row.top(), row.right() - tx - 10, row.height()), Qt::AlignVCenter | Qt::AlignLeft, t);
+            const QString t = QFontMetrics(tf).elidedText(i.data().toString(), Qt::ElideRight, qMax(40, right - tx));
+            p->drawText(QRect(tx, row.top(), qMax(40, right - tx), row.height()), Qt::AlignVCenter | Qt::AlignLeft, t);
         }
         p->restore();
     }
 };
 
-// ---------------------------------------------------------------- Barra de título
 class TitleBar : public QWidget {
 public:
     std::function<void()> onDouble;
-    TitleBar() { setObjectName("titlebar"); setFixedHeight(48); }
+    TitleBar() {
+        setObjectName("titlebar");
+        setFixedHeight(50);
+    }
 protected:
     void mousePressEvent(QMouseEvent* e) override {
         if (e->button() == Qt::LeftButton && window()->windowHandle()) window()->windowHandle()->startSystemMove();
@@ -150,33 +198,44 @@ protected:
 };
 
 static QToolButton* tbtn(const QString& t, const QString& tip, const char* name = nullptr) {
-    auto* b = new QToolButton; b->setText(t); b->setToolTip(tip); b->setCursor(Qt::PointingHandCursor);
-    if (name) b->setObjectName(name);
+    auto* b = new QToolButton;
+    b->setText(t);
+    b->setToolTip(tip);
+    b->setCursor(Qt::PointingHandCursor);
+    if (name) b->setObjectName(QString::fromLatin1(name));
     return b;
 }
 
-// ---------------------------------------------------------------- MainWindow
 MainWindow::MainWindow() : meta_(&igdb_) {
     QSettings st;
     frameless_ = st.value("frameless", true).toBool();
     setWindowTitle("EmuCenter");
     setWindowIcon(QIcon(":/app_icon.png"));
-    resize(1180, 720);
-    setMinimumSize(900, 560);
+    setMinimumSize(920, 580);
     if (frameless_) setWindowFlag(Qt::FramelessWindowHint);
+    if (!(st.value("rememberGeometry", true).toBool() && restoreGeometry(st.value("window/geometry").toByteArray()))) resize(1240, 760);
 
-    // ---------- barra de título com botões embutidos ----------
     auto* bar = new TitleBar;
     bar->onDouble = [this] { if (frameless_) toggleMaximize(); };
     auto* bl = new QHBoxLayout(bar);
-    bl->setContentsMargins(12, 0, 0, 0); bl->setSpacing(2);
-    auto* ico = new QLabel; ico->setPixmap(QPixmap(":/app_icon.png").scaled(28, 28, Qt::KeepAspectRatio, Qt::SmoothTransformation));
-    auto* ttl = new QLabel("EmuCenter"); ttl->setObjectName("muted");
-    bl->addWidget(ico); bl->addSpacing(6); bl->addWidget(ttl); bl->addStretch();
+    bl->setContentsMargins(12, 0, 0, 0);
+    bl->setSpacing(2);
+    auto* ico = new QLabel;
+    ico->setPixmap(QPixmap(":/app_icon.png").scaled(28, 28, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    auto* ttl = new QLabel("EmuCenter");
+    ttl->setObjectName("muted");
+    bl->addWidget(ico);
+    bl->addSpacing(6);
+    bl->addWidget(ttl);
+    bl->addStretch();
     auto* addB = tbtn(QString::fromUtf8("＋ ") + T("ROMs"), T("Adicionar pasta de ROMs"));
+    auto* bigB = tbtn(QString::fromUtf8("▦ ") + T("Big Picture"), T("Abrir o Big Picture"));
     auto* metaB = tbtn(QString::fromUtf8("⟳ ") + T("Metadados"), T("Baixar / atualizar metadados"));
     auto* cfgB = tbtn(QString::fromUtf8("⚙ ") + T("Configurações"), T("Configurações"));
-    bl->addWidget(addB); bl->addWidget(metaB); bl->addWidget(cfgB);
+    bl->addWidget(addB);
+    bl->addWidget(bigB);
+    bl->addWidget(metaB);
+    bl->addWidget(cfgB);
     if (frameless_) {
         bl->addSpacing(8);
         auto* mn = tbtn(QString::fromUtf8("—"), T("Minimizar"), "winbtn");
@@ -185,34 +244,36 @@ MainWindow::MainWindow() : meta_(&igdb_) {
         connect(mn, &QToolButton::clicked, this, &QWidget::showMinimized);
         connect(maxBtn_, &QToolButton::clicked, this, &MainWindow::toggleMaximize);
         connect(cl, &QToolButton::clicked, this, &QWidget::close);
-        bl->addWidget(mn); bl->addWidget(maxBtn_); bl->addWidget(cl);
-        qApp->installEventFilter(this);   // redimensionar pelas bordas
+        bl->addWidget(mn);
+        bl->addWidget(maxBtn_);
+        bl->addWidget(cl);
+        qApp->installEventFilter(this);
     }
-    {   // botão ROMs: escolher entre adicionar uma pasta ou importar arquivos
+    {
         auto* romMenu = new QMenu(addB);
         romMenu->addAction(T("Adicionar pasta de ROMs…"), this, &MainWindow::addRomFolder);
         romMenu->addAction(T("Importar arquivo(s) de ROM…"), this, &MainWindow::importRoms);
         addB->setMenu(romMenu);
         addB->setPopupMode(QToolButton::InstantPopup);
     }
+    connect(bigB, &QToolButton::clicked, this, &MainWindow::enterBigPicture);
     connect(metaB, &QToolButton::clicked, this, [this] { refreshMetadata(false); });
-    connect(cfgB, &QToolButton::clicked, this, [this] { openSettings(0); });
+    connect(cfgB, &QToolButton::clicked, this, &MainWindow::openSettings);
 
-    // ---------- esquerda: logo (abre menu) + lista ----------
-    auto* side = new QWidget; side->setObjectName("side");
+    auto* side = new QWidget;
+    side->setObjectName("side");
     auto* sl = new QVBoxLayout(side);
     sl->setContentsMargins(10, 10, 0, 10);
-    auto* logo = new QToolButton; logo->setObjectName("logoBtn");
-    logoBtn_ = logo;
-    logo->setIconSize(QSize(210, 22));
-    applyLogo();
-    logo->setToolTip(T("Menu do EmuCenter"));
-    logo->setCursor(Qt::PointingHandCursor);
-    logo->setPopupMode(QToolButton::InstantPopup);
+    logoBtn_ = new QToolButton;
+    logoBtn_->setObjectName("logoBtn");
+    logoBtn_->setIconSize(QSize(210, 24));
+    logoBtn_->setToolTip(T("Menu do EmuCenter"));
+    logoBtn_->setCursor(Qt::PointingHandCursor);
+    logoBtn_->setPopupMode(QToolButton::InstantPopup);
     logoMenu_ = new QMenu(this);
-    logo->setMenu(logoMenu_);
+    logoBtn_->setMenu(logoMenu_);
     connect(logoMenu_, &QMenu::aboutToShow, this, &MainWindow::fillLogoMenu);
-    sl->addWidget(logo);
+    sl->addWidget(logoBtn_);
     sl->addSpacing(6);
 
     tree_ = new QTreeWidget;
@@ -225,44 +286,69 @@ MainWindow::MainWindow() : meta_(&igdb_) {
     tree_->setContextMenuPolicy(Qt::CustomContextMenu);
     tree_->setFrameShape(QFrame::NoFrame);
     sl->addWidget(tree_, 1);
-    side->setMinimumWidth(300);
+    side->setMinimumWidth(320);
 
-    // ---------- direita: banner + jogar + informações ----------
-    auto* main = new QWidget; main->setObjectName("root");
+    auto* main = new QWidget;
+    main->setObjectName("root");
     auto* ml = new QVBoxLayout(main);
     ml->setContentsMargins(0, 0, 0, 12);
     banner_ = new Banner;
     ml->addWidget(banner_);
     auto* body = new QVBoxLayout;
-    body->setContentsMargins(20, 10, 20, 0);
+    body->setContentsMargins(24, 10, 24, 0);
     ml->addLayout(body, 1);
-    title_ = new QLabel(T("Selecione um jogo")); title_->setObjectName("title");
-    info_ = new QLabel; info_->setObjectName("muted");
-    auto* row = new QHBoxLayout; row->setSpacing(12);
-    playBtn_ = new QPushButton(T("JOGAR")); playBtn_->setObjectName("play"); playBtn_->setCursor(Qt::PointingHandCursor);
+    title_ = new QLabel(T("Selecione um jogo"));
+    title_->setObjectName("title");
+    info_ = new QLabel;
+    info_->setObjectName("mono");
+    auto* row = new QHBoxLayout;
+    row->setSpacing(12);
+    playBtn_ = new QPushButton(T("JOGAR"));
+    playBtn_->setObjectName("play");
+    playBtn_->setCursor(Qt::PointingHandCursor);
     installBtn_ = new QPushButton;
-    status_ = new QLabel; status_->setTextFormat(Qt::RichText);
-    row->addWidget(playBtn_); row->addWidget(installBtn_); row->addWidget(status_, 1);
-    desc_ = new QTextBrowser; desc_->setOpenExternalLinks(true);
-    body->addWidget(title_); body->addWidget(info_); body->addSpacing(6); body->addLayout(row); body->addSpacing(6); body->addWidget(desc_, 1);
+    status_ = new QLabel;
+    status_->setTextFormat(Qt::RichText);
+    row->addWidget(playBtn_);
+    row->addWidget(installBtn_);
+    row->addWidget(status_, 1);
+    desc_ = new QTextBrowser;
+    desc_->setOpenExternalLinks(true);
+    body->addWidget(title_);
+    body->addWidget(info_);
+    body->addSpacing(6);
+    body->addLayout(row);
+    body->addSpacing(6);
+    body->addWidget(desc_, 1);
 
     auto* split = new QSplitter;
-    split->addWidget(side); split->addWidget(main);
-    split->setStretchFactor(1, 1); split->setCollapsible(0, false); split->setHandleWidth(1);
+    split->addWidget(side);
+    split->addWidget(main);
+    split->setStretchFactor(1, 1);
+    split->setCollapsible(0, false);
+    split->setHandleWidth(1);
 
-    auto* central = new QWidget;
-    auto* cl = new QVBoxLayout(central);
-    cl->setContentsMargins(0, 0, 0, 0); cl->setSpacing(0);
-    cl->addWidget(bar); cl->addWidget(split, 1);
-    setCentralWidget(central);
+    bp_ = new BigPicture(&meta_);
+    stack_ = new QStackedWidget;
+    stack_->addWidget(split);
+    stack_->addWidget(bp_);
 
-    // ---------- barra de status: progresso dos metadados ----------
-    metaLbl_ = new QLabel; metaBar_ = new QProgressBar; metaBar_->setFixedWidth(220); metaBar_->hide();
+    bg_ = new BgWidget;
+    auto* cl = new QVBoxLayout(bg_);
+    cl->setContentsMargins(0, 0, 0, 0);
+    cl->setSpacing(0);
+    cl->addWidget(bar);
+    cl->addWidget(stack_, 1);
+    setCentralWidget(bg_);
+
+    metaLbl_ = new QLabel;
+    metaBar_ = new QProgressBar;
+    metaBar_->setFixedWidth(220);
+    metaBar_->hide();
     statusBar()->addPermanentWidget(metaLbl_);
     statusBar()->addPermanentWidget(metaBar_);
     statusBar()->showMessage(T("Pronto."));
 
-    // ---------- bandeja ----------
     if (QSystemTrayIcon::isSystemTrayAvailable()) {
         tray_ = new QSystemTrayIcon(QIcon(":/app_icon.png"), this);
         auto* tm = new QMenu(this);
@@ -279,13 +365,18 @@ MainWindow::MainWindow() : meta_(&igdb_) {
     }
     QApplication::setQuitOnLastWindowClosed(false);
 
-    // ---------- ligações ----------
     connect(playBtn_, &QPushButton::clicked, this, &MainWindow::play);
     connect(installBtn_, &QPushButton::clicked, this, &MainWindow::installMissing);
     connect(tree_, &QTreeWidget::itemSelectionChanged, this, &MainWindow::onSelect);
     connect(tree_, &QTreeWidget::itemActivated, this, [this](QTreeWidgetItem* it) { if (it->parent()) play(); });
     connect(tree_, &QTreeWidget::itemClicked, this, [](QTreeWidgetItem* it) { if (!it->parent()) it->setExpanded(!it->isExpanded()); });
     connect(tree_, &QTreeWidget::customContextMenuRequested, this, &MainWindow::gameMenu);
+
+    connect(bp_, &BigPicture::playRequested, this, [this](const QString& key) {
+        if (const Game* g = gameByKey(key)) playGame(*g);
+    });
+    connect(bp_, &BigPicture::exitRequested, this, &MainWindow::leaveBigPicture);
+    connect(bp_, &BigPicture::fullscreenRequested, this, &MainWindow::toggleFullscreen);
 
     connect(&emu_, &EmulatorManager::status, this, [this](const QString& m) { statusBar()->showMessage(m); });
     connect(&emu_, &EmulatorManager::progress, this, [this](int p) {
@@ -303,12 +394,19 @@ MainWindow::MainWindow() : meta_(&igdb_) {
         if (n > 0) notify("EmuCenter", T("%1 atualização(ões) de emulador disponível(is). Veja em Configurações › Emuladores.").arg(n));
     });
 
+    bpTimer_ = new QTimer(this);
+    bpTimer_->setSingleShot(true);
+    connect(bpTimer_, &QTimer::timeout, this, [this] { if (stack_->currentIndex() == 1) bp_->refreshVisuals(); });
+
     connect(&meta_, &Metadata::imageReady, this, [this](const QString& key, int kind, const QPixmap& pm) {
         if (kind == Metadata::Icon) {
             const QIcon ic(pm.scaled(120, 120, Qt::KeepAspectRatio, Qt::SmoothTransformation));
             icons_[key] = ic;
             if (auto* it = items_.value(key)) it->setIcon(0, ic);
-        } else if (const Game* g = current(); g && g->key() == key) banner_->setImage(pm);
+        } else if (const Game* g = current(); g && g->key() == key) {
+            banner_->setImage(pm);
+        }
+        if (stack_->currentIndex() == 1) bpTimer_->start(150);
     });
     connect(&meta_, &Metadata::nameReady, this, [this](const QString& key, const QString& name) {
         for (auto& g : games_) if (g.key() == key) g.title = name;
@@ -318,43 +416,71 @@ MainWindow::MainWindow() : meta_(&igdb_) {
     });
     connect(&meta_, &Metadata::textReady, this, [this](const QString& key, const QString& t) {
         if (const Game* g = current(); g && g->key() == key) desc_->setPlainText(t);
+        if (stack_->currentIndex() == 1) bpTimer_->start(150);
     });
     connect(&meta_, &Metadata::progress, this, [this](int d, int t) {
-        metaBar_->setRange(0, t); metaBar_->setValue(d);
+        metaBar_->setRange(0, t);
+        metaBar_->setValue(d);
         metaBar_->setVisible(t > 0 && d < t);
         metaLbl_->setText(t > 0 && d < t ? T("Metadados: %1/%2").arg(d).arg(t) : QString());
     });
     connect(&meta_, &Metadata::batchFinished, this, [this](int, int dl) {
-        metaBar_->hide(); metaLbl_->clear();
-        if (dl > 0) { statusBar()->showMessage(T("Metadados atualizados."), 6000); notify("EmuCenter", T("Metadados dos jogos atualizados (%1 itens novos).").arg(dl)); }
+        metaBar_->hide();
+        metaLbl_->clear();
+        if (dl > 0) {
+            statusBar()->showMessage(T("Metadados atualizados."), 6000);
+            notify("EmuCenter", T("Metadados dos jogos atualizados (%1 itens novos).").arg(dl));
+        }
+    });
+
+    connect(&updater_, &Updater::checked, this, [this](bool ok, bool newer, const QString& tag, const QString& msg) {
+        const bool manual = manualUpdate_;
+        manualUpdate_ = false;
+        if (ok && newer) { askInstallUpdate(tag); return; }
+        if (manual) QMessageBox::information(this, "EmuCenter", msg);
+    });
+    connect(&updater_, &Updater::progress, this, [this](int p, const QString& t) {
+        statusBar()->showMessage(t);
+        metaBar_->setRange(0, p < 0 ? 0 : 100);
+        if (p >= 0) metaBar_->setValue(p);
+        metaBar_->setVisible(p < 100);
+    });
+    connect(&updater_, &Updater::failed, this, [this](const QString& m) {
+        metaBar_->hide();
+        QMessageBox::warning(this, "EmuCenter", m);
     });
 
     metaTimer_ = new QTimer(this);
     connect(metaTimer_, &QTimer::timeout, this, [this] { refreshMetadata(false); });
     applyGeneral();
+    applyLogo();
+    applyBackground();
 
-    // lista aparece na hora (ícones do cache); rede só depois dos atrasos configurados em Avançado
     rescanImpl(false);
-    if (QSettings().value("romDirs").toStringList().isEmpty()) QTimer::singleShot(400, this, &MainWindow::addRomFolder);
-    {
-        QSettings s;
-        if (s.value("autoMeta", true).toBool())
-            QTimer::singleShot(s.value("startDelayMeta", 3).toInt() * 1000, this, [this] { meta_.enqueueAll(games_); });
-        if (s.value("autoEmuUpdate", false).toBool())
-            QTimer::singleShot(s.value("startDelayUpdate", 10).toInt() * 1000, this, &MainWindow::checkEmuUpdates);
-        if (!Theme::notice().isEmpty()) QTimer::singleShot(1500, this, [this] { notify("EmuCenter", Theme::notice()); });
-    }
-}
+    DiscordRpc::instance().applySettings();
+    DiscordRpc::instance().setBrowsing(games_.size());
 
-void MainWindow::bringToFront() {
-    if (isMinimized()) showNormal(); else show();
-    raise();
-    activateWindow();
+    if (!st.value("welcomeDone", false).toBool()) QTimer::singleShot(250, this, &MainWindow::showWelcome);
+    if (st.value("autoMeta", true).toBool())
+        QTimer::singleShot(st.value("startDelayMeta", 3).toInt() * 1000, this, [this] { meta_.enqueueAll(games_); });
+    if (st.value("autoEmuUpdate", false).toBool())
+        QTimer::singleShot(st.value("startDelayUpdate", 10).toInt() * 1000, this, &MainWindow::checkEmuUpdates);
+    if (st.value("autoUpdateCheck", true).toBool())
+        QTimer::singleShot(st.value("startDelayAppUpdate", 8).toInt() * 1000, this, [this] {
+            updater_.check(QSettings().value("updatePre", false).toBool());
+        });
+    if (!Theme::notice().isEmpty()) QTimer::singleShot(1500, this, [this] { notify("EmuCenter", Theme::notice()); });
+    if (st.value("startBigPicture", false).toBool()) QTimer::singleShot(0, this, &MainWindow::enterBigPicture);
 }
 
 void MainWindow::applyGeneral() {
     const int h = QSettings().value("metaHours", 0).toInt();
-    if (h > 0) metaTimer_->start(h * 3600 * 1000); else metaTimer_->stop();
+    if (h > 0) metaTimer_->start(h * 3600 * 1000);
+    else metaTimer_->stop();
+}
+
+void MainWindow::applyBackground() {
+    bg_->setImage(Theme::backgroundImage(), Theme::backgroundOpacity());
 }
 
 void MainWindow::notify(const QString& title, const QString& msg) {
@@ -363,14 +489,18 @@ void MainWindow::notify(const QString& title, const QString& msg) {
     else statusBar()->showMessage(msg, 8000);
 }
 
-// ---------------------------------------------------------------- janela
 void MainWindow::toggleMaximize() {
     if (isMaximized()) { showNormal(); if (maxBtn_) maxBtn_->setText(QString::fromUtf8("▢")); }
     else { showMaximized(); if (maxBtn_) maxBtn_->setText(QString::fromUtf8("❐")); }
 }
 
+void MainWindow::toggleFullscreen() {
+    if (isFullScreen()) showNormal();
+    else showFullScreen();
+}
+
 bool MainWindow::eventFilter(QObject* o, QEvent* ev) {
-    if (!frameless_ || isMaximized() || ev->type() != QEvent::MouseButtonPress) return false;
+    if (!frameless_ || isMaximized() || isFullScreen() || ev->type() != QEvent::MouseButtonPress) return false;
     auto* w = qobject_cast<QWidget*>(o);
     if (!w || w->window() != this) return false;
     auto* me = static_cast<QMouseEvent*>(ev);
@@ -387,21 +517,36 @@ bool MainWindow::eventFilter(QObject* o, QEvent* ev) {
 }
 
 void MainWindow::closeEvent(QCloseEvent* e) {
+    QSettings().setValue("window/geometry", saveGeometry());
     if (!quitting_ && tray_ && tray_->isVisible() && QSettings().value("background", true).toBool()) {
         hide();
         e->ignore();
-        if (!shownTrayHint_) { shownTrayHint_ = true; tray_->showMessage("EmuCenter", T("O EmuCenter continua em segundo plano. Clique no ícone da bandeja para abrir."), QSystemTrayIcon::Information, 5000); }
+        if (!shownTrayHint_) {
+            shownTrayHint_ = true;
+            tray_->showMessage("EmuCenter", T("O EmuCenter continua em segundo plano. Clique no ícone da bandeja para abrir."), QSystemTrayIcon::Information, 5000);
+        }
         return;
     }
     e->accept();
     qApp->quit();
 }
 
-// ---------------------------------------------------------------- menu da logo
+void MainWindow::restartApp() {
+    QSettings().setValue("window/geometry", saveGeometry());
+    quitting_ = true;
+    QProcess::startDetached(QCoreApplication::applicationFilePath(), {"--restarted"});
+    qApp->quit();
+}
+
+void MainWindow::promptRestart() {
+    if (QMessageBox::question(this, "EmuCenter", T("Reiniciar o EmuCenter agora para aplicar o idioma?")) == QMessageBox::Yes) restartApp();
+}
+
 void MainWindow::fillLogoMenu() {
     QMenu* m = logoMenu_;
     m->clear();
-    m->addAction(T("Configurações…"), this, [this] { openSettings(0); });
+    m->addAction(T("Configurações…"), this, &MainWindow::openSettings);
+    m->addAction(T("Big Picture"), this, &MainWindow::enterBigPicture);
     m->addSeparator();
     m->addAction(T("Adicionar pasta de ROMs…"), this, &MainWindow::addRomFolder);
     m->addAction(T("Importar arquivo(s) de ROM…"), this, &MainWindow::importRoms);
@@ -409,38 +554,54 @@ void MainWindow::fillLogoMenu() {
     m->addAction(T("Atualizar metadados"), this, [this] { refreshMetadata(false); });
     m->addAction(T("Refazer metadados que falharam"), this, [this] { refreshMetadata(true); });
     m->addAction(T("Verificar atualizações dos emuladores"), this, &MainWindow::checkEmuUpdates);
+    m->addAction(T("Verificar atualizações do EmuCenter"), this, &MainWindow::checkAppUpdate);
+    m->addAction(T("Assistente de configuração"), this, &MainWindow::showWelcome);
     m->addSeparator();
 
     QMenu* lang = m->addMenu(T("Idioma"));
-    auto* lg = new QActionGroup(lang);
-    for (auto [code, name] : {std::pair<QString, QString>{"pt", "Português (Brasil)"}, {"en", "English"}}) {
-        QAction* a = lang->addAction(name); a->setCheckable(true); a->setChecked(I18n::lang() == code); lg->addAction(a);
-        connect(a, &QAction::triggered, this, [this, code = code] {
+    const auto langs = I18n::languages();
+    for (const auto& l : langs) {
+        QAction* a = lang->addAction(l.second);
+        a->setCheckable(true);
+        a->setChecked(I18n::lang() == l.first);
+        connect(a, &QAction::triggered, this, [this, code = l.first] {
             I18n::setLang(code);
-            QMessageBox::information(this, "EmuCenter", T("Reinicie o EmuCenter para aplicar o idioma."));
+            promptRestart();
         });
     }
     QMenu* th = m->addMenu(T("Tema"));
-    auto* tg = new QActionGroup(th);
-    for (const auto& p : Theme::builtins()) {
-        QAction* a = th->addAction(p.name); a->setCheckable(true); a->setChecked(QSettings().value("theme", "grafite") == p.id); tg->addAction(a);
-        connect(a, &QAction::triggered, this, [this, id = p.id] { QSettings().setValue("theme", id); Theme::apply(); applyLogo(); rebuildTree(); banner_->update(); });
+    const QList<Palette> pals = Theme::builtins();
+    const QString curTheme = QSettings().value("theme", "grafite").toString();
+    for (const auto& p : pals) {
+        QAction* a = th->addAction(I18n::tr(p.name));
+        a->setCheckable(true);
+        a->setChecked(curTheme == p.id);
+        connect(a, &QAction::triggered, this, [this, id = p.id] {
+            QSettings().setValue("theme", id);
+            Theme::apply();
+            applyLogo();
+            rebuildTree();
+            banner_->update();
+        });
     }
     m->addSeparator();
     m->addAction(T("Abrir pasta de dados"), this, [] {
         const QString d = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-        QDir().mkpath(d); QDesktopServices::openUrl(QUrl::fromLocalFile(d));
+        QDir().mkpath(d);
+        QDesktopServices::openUrl(QUrl::fromLocalFile(d));
     });
-    m->addAction(T("Abrir pasta dos emuladores"), this, [this] { QDir().mkpath(emu_.root()); QDesktopServices::openUrl(QUrl::fromLocalFile(emu_.root())); });
+    m->addAction(T("Abrir pasta dos emuladores"), this, [this] {
+        QDir().mkpath(emu_.root());
+        QDesktopServices::openUrl(QUrl::fromLocalFile(emu_.root()));
+    });
     m->addAction(T("Sobre o EmuCenter"), this, [this] {
-        QMessageBox::about(this, "EmuCenter", "<b>EmuCenter 0.2</b><br>" + T("Central leve de emuladores.") + "<br><br>" +
-                                                  T("Imagens: libretro-thumbnails  •  Descrições: Wikipédia"));
+        QMessageBox::about(this, "EmuCenter", "<b>EmuCenter " + Updater::currentVersion() + "</b><br>" + T("Central leve de emuladores.") + "<br><br>" +
+                                                  T("Imagens: IGDB e libretro-thumbnails  •  Descrições: IGDB e Wikipédia"));
     });
     m->addSeparator();
     m->addAction(T("Sair"), this, [this] { quitting_ = true; close(); });
 }
 
-// ---------------------------------------------------------------- biblioteca
 void MainWindow::addRomFolder() {
     const QString d = QFileDialog::getExistingDirectory(this, T("Escolha a pasta com suas ROMs"));
     if (d.isEmpty()) return;
@@ -453,17 +614,18 @@ void MainWindow::addRomFolder() {
 
 void MainWindow::importRoms() {
     QStringList dirs = QSettings().value("romDirs").toStringList();
-    if (dirs.isEmpty()) {   // precisa de uma pasta de biblioteca para onde importar
+    if (dirs.isEmpty()) {
         addRomFolder();
         dirs = QSettings().value("romDirs").toStringList();
         if (dirs.isEmpty()) return;
     }
     QStringList exts;
-    for (const auto& sd : Catalog::systems()) for (const auto& e : sd.exts) if (!exts.contains("*." + e)) exts << "*." + e;
+    for (const auto& sd : Catalog::systems())
+        for (const auto& e : sd.exts + sd.hintExts) if (!exts.contains("*." + e)) exts << "*." + e;
     const QStringList files = QFileDialog::getOpenFileNames(this, T("Escolha as ROMs para importar"), {}, T("ROMs (%1)").arg(exts.join(' ')));
     if (files.isEmpty()) return;
 
-    QString dest = dirs.first();
+    QString dest = dirs.constFirst();
     if (dirs.size() > 1) {
         bool ok = false;
         dest = QInputDialog::getItem(this, "EmuCenter", T("Importar para qual pasta?"), dirs, 0, false, &ok);
@@ -501,16 +663,24 @@ void MainWindow::rescan() { rescanImpl(true); }
 void MainWindow::rescanImpl(bool network) {
     games_ = Library::scan(QSettings().value("romDirs").toStringList());
     rebuildTree();
-    meta_.loadCachedIcons(games_);   // ícones que já estão no disco, sem rede
+    DiscordRpc::instance().setBrowsing(games_.size());
+    meta_.loadCachedIcons(games_);
     if (!network) return;
-    if (QSettings().value("autoMeta", true).toBool()) meta_.enqueueAll(games_);
-    else for (const auto& g : games_) if (!icons_.contains(g.key())) meta_.requestIcon(g);
+    if (QSettings().value("autoMeta", true).toBool()) {
+        meta_.enqueueAll(games_);
+    } else {
+        for (const auto& g : std::as_const(games_)) if (!icons_.contains(g.key())) meta_.requestIcon(g);
+    }
 }
 
 void MainWindow::applyLogo() {
     if (!logoBtn_) return;
-    const QPixmap px = Theme::logo(QPixmap(":/logo_text.png")).scaledToWidth(420, Qt::SmoothTransformation);
+    const QString custom = Theme::customLogo();
+    QPixmap px = custom.isEmpty() ? Theme::logo(QPixmap(":/logo_text.png")) : QPixmap(custom);
+    px = px.scaledToHeight(48, Qt::SmoothTransformation);
+    if (px.width() > 460) px = px.scaledToWidth(460, Qt::SmoothTransformation);
     logoBtn_->setIcon(QIcon(px));
+    logoBtn_->setIconSize(QSize(qMin(220, px.width() / 2), px.height() / 2));
 }
 
 void MainWindow::refreshMetadata(bool force) {
@@ -525,15 +695,57 @@ void MainWindow::checkEmuUpdates() {
     emu_.checkAllUpdates();
 }
 
+void MainWindow::checkAppUpdate() {
+    manualUpdate_ = true;
+    statusBar()->showMessage(T("Verificando…"), 4000);
+    updater_.check(QSettings().value("updatePre", false).toBool());
+}
+
+void MainWindow::askInstallUpdate(const QString& tag) {
+    const auto r = QMessageBox::question(this, "EmuCenter", T("A versão %1 do EmuCenter está disponível. Baixar e instalar agora? O app reinicia sozinho.").arg(tag));
+    if (r == QMessageBox::Yes) updater_.install();
+}
+
+bool MainWindow::canPlay(const Game& g) const {
+    const SystemDef* s = Catalog::system(g.systemId);
+    if (!s) return false;
+    for (const auto& l : s->emus) if (emu_.available(l)) return true;
+    return false;
+}
+
+const Game* MainWindow::gameByKey(const QString& key) const {
+    for (const Game& g : games_) if (g.key() == key) return &g;
+    return nullptr;
+}
+
+void MainWindow::refreshBigPicture() {
+    bp_->setGames(games_, [this](const Game& g) { return canPlay(g); });
+}
+
+void MainWindow::enterBigPicture() {
+    refreshBigPicture();
+    stack_->setCurrentIndex(1);
+    if (const Game* g = current()) bp_->focusGame(g->key());
+    bp_->setFocus();
+}
+
+void MainWindow::leaveBigPicture() {
+    stack_->setCurrentIndex(0);
+    if (isFullScreen()) showNormal();
+}
+
 void MainWindow::rebuildTree() {
     const QString keep = current() ? current()->key() : QString();
+    const bool showPlay = QSettings().value("showPlaytimeInList", false).toBool();
     tree_->blockSignals(true);
-    tree_->clear(); items_.clear();
-    int n = 0;   // paridade contínua em TODA a lista: claro, escuro, claro...
+    tree_->clear();
+    items_.clear();
+    int n = 0;
     for (const auto& s : Catalog::systems()) {
         QTreeWidgetItem* top = nullptr;
-        const bool ok = std::any_of(s.emus.begin(), s.emus.end(), [&](const EmuLink& l) { return emu_.available(l); });
-        for (const auto& g : games_) {
+        bool ok = false;
+        for (const auto& l : s.emus) if (emu_.available(l)) ok = true;
+        for (const auto& g : std::as_const(games_)) {
             if (g.systemId != s.id) continue;
             if (!top) {
                 top = new QTreeWidgetItem(tree_, {s.name});
@@ -541,25 +753,31 @@ void MainWindow::rebuildTree() {
             }
             auto* it = new QTreeWidgetItem(top, {g.title});
             it->setData(0, Qt::UserRole, g.key());
-            it->setData(0, GameDelegate::Parity, n++ % 2);          // claro, escuro, claro...
+            it->setData(0, GameDelegate::Parity, n++ % 2);
             it->setData(0, GameDelegate::NoEmu, !ok);
+            if (showPlay) {
+                const qint64 secs = Library::playSeconds(g);
+                if (secs > 0) it->setData(0, GameDelegate::PlayText, Library::formatDuration(secs));
+            }
             if (icons_.contains(g.key())) it->setIcon(0, icons_[g.key()]);
             items_[g.key()] = it;
         }
-        if (top) { top->setText(0, QString("%1  (%2)").arg(s.name).arg(top->childCount())); top->setExpanded(true); }
+        if (top) {
+            top->setText(0, QString("%1  (%2)").arg(s.name).arg(top->childCount()));
+            top->setExpanded(true);
+        }
     }
     tree_->blockSignals(false);
     if (items_.contains(keep)) tree_->setCurrentItem(items_[keep]);
     else onSelect();
     tree_->viewport()->update();
+    if (stack_ && stack_->currentIndex() == 1) refreshBigPicture();
 }
 
 const Game* MainWindow::current() const {
     auto* it = tree_->currentItem();
     if (!it || !it->parent()) return nullptr;
-    const QString k = it->data(0, Qt::UserRole).toString();
-    for (const auto& g : games_) if (g.key() == k) return &g;
-    return nullptr;
+    return gameByKey(it->data(0, Qt::UserRole).toString());
 }
 
 void MainWindow::onSelect() {
@@ -567,8 +785,11 @@ void MainWindow::onSelect() {
     banner_->setImage({});
     desc_->clear();
     if (!g) {
-        title_->setText(T("Selecione um jogo")); info_->clear(); status_->clear();
-        playBtn_->setEnabled(false); installBtn_->hide();
+        title_->setText(T("Selecione um jogo"));
+        info_->clear();
+        status_->clear();
+        playBtn_->setEnabled(false);
+        installBtn_->hide();
         return;
     }
     title_->setText(g->title);
@@ -587,67 +808,88 @@ void MainWindow::refreshStatus() {
                        .arg(s->name, Library::formatDuration(Library::playSeconds(*g)),
                             last.isValid() ? last.toString("dd/MM/yyyy") : QString::fromUtf8("—")));
 
+    if (s->emus.isEmpty()) {
+        status_->setText("<span style='color:" + P.warn.name() + "'><b>" + T("Sem emulador conhecido") + "</b><br>" +
+                         T("Ainda não existe um emulador utilizável para este console.") + "</span>");
+        playBtn_->setEnabled(false);
+        installBtn_->hide();
+        return;
+    }
+
     auto name = [](const EmuLink& l) {
         QString n = Catalog::emu(l.emuId)->name;
         return l.core.isEmpty() ? n : n + " (" + QString(l.core).remove("_libretro") + ")";
     };
-    const bool primaryOk = emu_.available(s->emus.first());
+    const bool primaryOk = emu_.available(s->emus.constFirst());
     bool anyOk = primaryOk;
     QString html;
     if (primaryOk)
-        html = "<span style='color:" + P.ok.name() + "'><b>✔ " + T("Pronto") + "</b> — " + name(s->emus.first()).toHtmlEscaped() + "</span>";
+        html = "<span style='color:" + P.ok.name() + "'><b>✔ " + T("Pronto") + "</b> — " + name(s->emus.constFirst()).toHtmlEscaped() + "</span>";
     else
-        html = "<span style='color:" + P.err.name() + "'><b>" + T("1 erro") + "</b><br>need &gt;&gt; " + name(s->emus.first()).toHtmlEscaped() + "</span>";
+        html = "<span style='color:" + P.err.name() + "'><b>" + T("1 erro") + "</b><br>need &gt;&gt; " + name(s->emus.constFirst()).toHtmlEscaped() + "</span>";
     for (int i = 1; i < s->emus.size(); ++i) {
         const bool ok = emu_.available(s->emus[i]);
-        anyOk |= ok;
+        anyOk = anyOk || ok;
         html += "<br><span style='color:" + P.warn.name() + "'>or &gt;&gt; " + name(s->emus[i]).toHtmlEscaped() + (ok ? " ✔" : "") + "</span>";
     }
     status_->setText(html);
     playBtn_->setEnabled(anyOk);
     installBtn_->setVisible(!primaryOk);
-    installBtn_->setText(T("Instalar ") + Catalog::emu(s->emus.first().emuId)->name);
+    installBtn_->setText(T("Instalar ") + Catalog::emu(s->emus.constFirst().emuId)->name);
 }
 
 void MainWindow::installMissing() {
     const Game* g = current();
     if (!g) return;
-    const EmuLink l = Catalog::system(g->systemId)->emus.first();
+    const SystemDef* s = Catalog::system(g->systemId);
+    if (!s || s->emus.isEmpty()) return;
+    const EmuLink l = s->emus.constFirst();
     emu_.install(l.emuId, l.core);
 }
 
-// ---------------------------------------------------------------- jogar
 void MainWindow::play() {
-    const Game* g = current();
-    if (!g) return;
-    const SystemDef* s = Catalog::system(g->systemId);
-    const auto opts = Library::options(*g);
+    if (const Game* g = current()) playGame(*g);
+}
 
-    QList<EmuLink> order;   // emulador escolhido para este jogo vem primeiro
+void MainWindow::playGame(const Game& g) {
+    const SystemDef* s = Catalog::system(g.systemId);
+    if (!s) return;
+    if (s->emus.isEmpty()) {
+        QMessageBox::information(this, "EmuCenter", T("Ainda não existe um emulador utilizável para este console."));
+        return;
+    }
+    const auto opts = Library::options(g);
+
+    QList<EmuLink> order;
     for (const EmuLink& l : s->emus) if (!opts.emu.isEmpty() && opts.emu == l.emuId + "|" + l.core) order << l;
     for (const EmuLink& l : s->emus) if (opts.emu != l.emuId + "|" + l.core) order << l;
 
-    for (const EmuLink& l : order) {
-        QString prog; QStringList args;
-        if (!emu_.available(l) || !emu_.buildCommand(l, g->path, prog, args)) continue;
-        if (!opts.args.trimmed().isEmpty()) args << QProcess::splitCommand(opts.args);   // comandos extras do jogo
+    for (const EmuLink& l : std::as_const(order)) {
+        QString prog;
+        QStringList args;
+        if (!emu_.available(l) || !emu_.buildCommand(l, g.path, prog, args)) continue;
+        if (!opts.args.trimmed().isEmpty()) args << QProcess::splitCommand(opts.args);
         auto* p = new QProcess(this);
-        const Game game = *g;
-        auto* t = new QElapsedTimer; t->start();
-        connect(p, &QProcess::finished, this, [=]() {
+        const Game game = g;
+        auto* t = new QElapsedTimer;
+        t->start();
+        connect(p, &QProcess::finished, this, [this, p, t, game]() {
             Library::addPlayTime(game, t->elapsed() / 1000);
-            delete t; p->deleteLater();
+            delete t;
+            p->deleteLater();
+            DiscordRpc::instance().stopPlaying(games_.size());
             refreshStatus();
         });
         p->setWorkingDirectory(QFileInfo(prog).absolutePath());
         p->start(prog, args);
-        statusBar()->showMessage(T("Executando %1…").arg(g->title));
+        DiscordRpc::instance().setPlaying(g.title, g.systemId, s->name);
+        statusBar()->showMessage(T("Executando %1…").arg(g.title));
         return;
     }
-    installMissing();
+    const EmuLink primary = s->emus.constFirst();
+    emu_.install(primary.emuId, primary.core);
 }
 
-// ---------------------------------------------------------------- menu e opções por jogo
 void MainWindow::gameMenu(const QPoint& pos) {
     auto* it = tree_->itemAt(pos);
     if (!it || !it->parent()) return;
@@ -663,7 +905,10 @@ void MainWindow::gameMenu(const QPoint& pos) {
     m.addAction(T("Copiar caminho"), this, [g] { QApplication::clipboard()->setText(g.path); });
     m.addAction(T("Baixar metadados deste jogo de novo"), this, [this, g] {
         meta_.refreshGame(g);
-        QList<Game> one{g}; meta_.enqueueAll(one); meta_.requestBanner(g); meta_.requestText(g);
+        const QList<Game> one{g};
+        meta_.enqueueAll(one);
+        meta_.requestBanner(g);
+        meta_.requestText(g);
     });
     m.addAction(T("Zerar tempo de jogo"), this, [this, g] { Library::resetPlayTime(g); refreshStatus(); });
     m.exec(tree_->viewport()->mapToGlobal(pos));
@@ -672,20 +917,39 @@ void MainWindow::gameMenu(const QPoint& pos) {
 void MainWindow::gameSettings(const Game& g) {
     GameSettingsDialog d(g, &emu_, &meta_, &igdb_, this);
     if (d.exec() != QDialog::Accepted || !d.changed()) return;
-    rescanImpl(false);                                   // recalcula nomes e recarrega ícones personalizados
-    QList<Game> one{g};
-    meta_.enqueueAll(one);                               // baixa o que faltar com as novas escolhas
+    rescanImpl(false);
+    const QList<Game> one{g};
+    meta_.enqueueAll(one);
     onSelect();
 }
 
-// ---------------------------------------------------------------- configurações
-void MainWindow::openSettings(int tab) {
-    SettingsDialog d(&emu_, &meta_, &igdb_, this, tab);
+void MainWindow::showWelcome() {
+    WelcomeDialog d(&emu_, this);
+    d.exec();
+    applyLogo();
+    applyBackground();
+    rescan();
+    DiscordRpc::instance().applySettings();
+    if (d.languageChanged()) restartApp();
+}
+
+void MainWindow::openSettings() { openSettingsTab(0); }
+
+void MainWindow::openSettingsTab(int tab) {
+    SettingsDialog d(&emu_, &meta_, &igdb_, &updater_, this, tab);
     connect(&d, &SettingsDialog::romFoldersChanged, this, &MainWindow::rescan);
     connect(&d, &SettingsDialog::emulatorsChanged, this, [this] { rebuildTree(); refreshStatus(); });
-    connect(&d, &SettingsDialog::appearanceChanged, this, [this] { applyLogo(); rebuildTree(); banner_->update(); refreshStatus(); });
+    connect(&d, &SettingsDialog::appearanceChanged, this, [this] {
+        applyLogo();
+        applyBackground();
+        rebuildTree();
+        banner_->update();
+        refreshStatus();
+    });
     connect(&d, &SettingsDialog::generalChanged, this, &MainWindow::applyGeneral);
     connect(&d, &SettingsDialog::metadataRequested, this, &MainWindow::refreshMetadata);
+    connect(&d, &SettingsDialog::languageChanged, this, [this, &d] { d.accept(); promptRestart(); });
+    connect(&d, &SettingsDialog::welcomeRequested, this, [this, &d] { d.accept(); QTimer::singleShot(0, this, &MainWindow::showWelcome); });
     d.exec();
     rebuildTree();
     refreshStatus();

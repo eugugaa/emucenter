@@ -1,0 +1,4 @@
+#pragma once
+#define EMUCENTER_DISCORD_APP_ID ""
+#define EMUCENTER_IGDB_CLIENT_ID ""
+#define EMUCENTER_IGDB_CLIENT_SECRET ""

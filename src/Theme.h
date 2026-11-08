@@ -1,5 +1,6 @@
 #pragma once
 #include <QColor>
+#include <QFont>
 #include <QList>
 #include <QPixmap>
 #include <QString>
@@ -8,27 +9,35 @@
 struct Palette {
     QString id, name;
     QColor bg, panel, panel2, border, text, muted, accent;
-    QColor groupBg, groupText;                         // cabeçalho do console na lista
+    QColor groupBg, groupText;
     QColor rowLight, rowLightText, rowDark, rowDarkText, rowSel, rowSelText, separator;
     QColor ok, warn, err, plate;
-    QColor logoColor;                                  // inválida = logo original sobre uma placa clara
-    QColor gradA, gradB;                               // degradê personalizado (opcional)
+    QColor logoColor;
+    QColor gradA, gradB;
     int rowRadius = 10, rowGap = 4;
-    int gradient = -1;                                 // -1 = opção do usuário; 0/1 = o tema decide
+    int gradient = -1;
 };
 
 namespace Theme {
-enum Kind { All, Normal };   // All = muda tudo (cores, lista, grupos, degradê...) | Normal = botões, fontes, etc.
+enum Kind { All, Normal };
+enum FontKind { Body, Title, Mono };
 
 QList<Palette> builtins();
 const Palette& current();
 bool gradientOn();
-QStringList roots();                                   // AppData/themes e <pasta do .exe>/themes
-QStringList list(Kind k);                              // arquivos .css/.qss disponíveis
+QStringList roots();
+QStringList list(Kind k);
 QString pathOf(Kind k, const QString& file);
 QString importDir(Kind k);
-Kind importFile(const QString& path);                  // detecta all/normal pelo conteúdo e copia
-QString notice();                                      // aviso da última aplicação
+Kind importFile(const QString& path);
+QString notice();
 void apply();
-QPixmap logo(const QPixmap& original);                 // aplica a cor da logo do tema
+QPixmap logo(const QPixmap& original);
+QString fontFamily(FontKind k);
+QFont font(FontKind k, int pixelSize, int weight = QFont::Normal);
+QStringList availableFonts();
+int rowHeight();
+QString backgroundImage();
+int backgroundOpacity();
+QString customLogo();
 }

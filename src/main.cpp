@@ -9,24 +9,31 @@
 #include <QMessageBox>
 #include <QSettings>
 #include <QSystemTrayIcon>
+#include <QThread>
 
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
     QApplication::setOrganizationName("EmuCenter");
     QApplication::setApplicationName("EmuCenter");
-    const QString lang = QSettings().value("lang", "pt").toString();
-    I18n::setLang(lang);
+    I18n::setLang(QSettings().value("lang", "en").toString());
 
     const QString serverName = "EmuCenter-single-instance";
+    if (QCoreApplication::arguments().contains("--restarted")) {
+        for (int i = 0; i < 30; ++i) {
+            QLocalSocket probe;
+            probe.connectToServer(serverName);
+            if (!probe.waitForConnected(150)) break;
+            probe.abort();
+            QThread::msleep(200);
+        }
+    }
     {
         QLocalSocket probe;
         probe.connectToServer(serverName);
         if (probe.waitForConnected(300)) {
             probe.write("show");
             probe.waitForBytesWritten(300);
-            QMessageBox::warning(nullptr, "EmuCenter",
-                                 lang == "en" ? "EmuCenter is already running. Opening the existing window."
-                                              : "EmuCenter is already running. Bringing the existing window to the front.");
+            QMessageBox::warning(nullptr, "EmuCenter", T("O EmuCenter já está aberto. Vou mostrar a janela que já existe."));
             return 0;
         }
     }

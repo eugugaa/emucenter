@@ -1,6 +1,6 @@
-/* themes/normal — buttons, fonts, and details only (QSS). Applied on top of the theme.
-   If you put a ":root { --variable: ... }" block here, EmuCenter moves
-   that block to themes/all automatically. */
+/* themes/normal — só botões, fontes e detalhes (QSS). Aplicado por cima do tema.
+   Se você colocar um bloco ":root { --variavel: ... }" aqui, o EmuCenter move
+   esse bloco para themes/all automaticamente. */
 QPushButton {
     border-radius: 18px;
     padding: 10px 26px;

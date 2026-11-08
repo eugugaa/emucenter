@@ -1,5 +1,7 @@
 #include "Igdb.h"
+#include "Config.h"
 #include "I18n.h"
+#include "Catalog.h"
 #include <QDateTime>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -11,19 +13,22 @@
 
 static const char* kFields = "fields name,summary,first_release_date,cover.image_id,artworks.image_id,screenshots.image_id;";
 
-static qint64 platformId(const QString& sys) {   // ids de plataforma do IGDB
-    static const QMap<QString, qint64> m = {{"nes", 18}, {"snes", 19}, {"n64", 4}, {"gc", 21}, {"wii", 5}, {"wiiu", 41},
-                                            {"gb", 33}, {"gbc", 22}, {"gba", 24}, {"nds", 20}, {"3ds", 37}, {"ps1", 7},
-                                            {"ps2", 8}, {"psp", 38}, {"ps3", 9}, {"genesis", 29}};
-    return m.value(sys, 0);
+static qint64 platformId(const QString& sys) {
+    const SystemDef* d = Catalog::system(sys);
+    return d ? d->igdbId : 0;
 }
 
 Igdb::Igdb(QObject* p) : QObject(p) {}
 
-bool Igdb::configured() const {
-    QSettings s;
-    return !s.value("igdb/clientId").toString().trimmed().isEmpty() && !s.value("igdb/clientSecret").toString().trimmed().isEmpty();
+QString Igdb::clientId() const {
+    const QString o = QSettings().value("igdb/clientId").toString().trimmed();
+    return o.isEmpty() ? QString::fromUtf8(Config::IgdbClientId) : o;
 }
+QString Igdb::clientSecret() const {
+    const QString o = QSettings().value("igdb/clientSecret").toString().trimmed();
+    return o.isEmpty() ? QString::fromUtf8(Config::IgdbClientSecret) : o;
+}
+bool Igdb::configured() const { return !clientId().isEmpty() && !clientSecret().isEmpty(); }
 
 QUrl Igdb::imageUrl(const QString& id, const QString& size) {
     return QUrl("https://images.igdb.com/igdb/image/upload/t_" + size + "/" + id + ".jpg");
@@ -49,8 +54,8 @@ void Igdb::withToken(std::function<void(bool, QString)> cb) {
 
     QUrl u("https://id.twitch.tv/oauth2/token");
     QUrlQuery q;
-    q.addQueryItem("client_id", s.value("igdb/clientId").toString().trimmed());
-    q.addQueryItem("client_secret", s.value("igdb/clientSecret").toString().trimmed());
+    q.addQueryItem("client_id", clientId());
+    q.addQueryItem("client_secret", clientSecret());
     q.addQueryItem("grant_type", "client_credentials");
     u.setQuery(q);
     QNetworkReply* r = nam_.post(QNetworkRequest(u), QByteArray());
@@ -70,7 +75,7 @@ void Igdb::query(const QByteArray& body, ListCb cb, bool retry) {
     withToken([this, body, cb, retry](bool ok, QString tok) {
         if (!ok) return cb({}, tok);
         QNetworkRequest rq(QUrl("https://api.igdb.com/v4/games"));
-        rq.setRawHeader("Client-ID", QSettings().value("igdb/clientId").toString().trimmed().toUtf8());
+        rq.setRawHeader("Client-ID", clientId().toUtf8());
         rq.setRawHeader("Authorization", "Bearer " + tok.toUtf8());
         rq.setRawHeader("Accept", "application/json");
         rq.setHeader(QNetworkRequest::ContentTypeHeader, "text/plain");
@@ -78,7 +83,7 @@ void Igdb::query(const QByteArray& body, ListCb cb, bool retry) {
         connect(r, &QNetworkReply::finished, this, [this, r, body, cb, retry]() {
             r->deleteLater();
             const int code = r->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-            if (code == 401 && retry) {                 // token expirado/inválido: renova e tenta uma vez
+            if (code == 401 && retry) {
                 QSettings().remove("igdb/token");
                 return query(body, cb, false);
             }
@@ -98,8 +103,12 @@ IgdbGame Igdb::fromJson(const QJsonObject& o) {
     g.summary = o["summary"].toString();
     if (o.contains("first_release_date")) g.year = QDateTime::fromSecsSinceEpoch(o["first_release_date"].toInteger()).date().year();
     if (o.contains("year")) g.year = o["year"].toInt();
-    // aceita o formato da API (objetos com image_id) e o formato salvo no cache (strings)
-    auto idOf = [](const QJsonValue& v) { return v.isObject() ? v.toObject()["image_id"].toString() : v.toString(); };
+
+    auto idOf = [](const QJsonValue& v) {
+        if (!v.isObject()) return v.toString();
+        const QJsonObject vo = v.toObject();
+        return vo["image_id"].toString();
+    };
     g.cover = idOf(o["cover"]);
     for (const auto& a : o["artworks"].toArray()) g.artworks << idOf(a);
     for (const auto& s : o["screenshots"].toArray()) g.screenshots << idOf(s);
@@ -127,7 +136,7 @@ void Igdb::search(const QString& name, const QString& sys, ListCb cb) {
     query(("search \"" + n + "\"; " + kFields + " where platforms = (" + QString::number(pid) + "); limit 8;").toUtf8(),
           [run, cb](QList<IgdbGame> l, QString err) {
               if (!l.isEmpty() || !err.isEmpty()) return cb(l, err);
-              run(0);                                    // sem resultado na plataforma: tenta sem filtro
+              run(0);
           });
 }
 

@@ -1,55 +1,54 @@
 /* ==========================================================================
-   EmuCenter — FULL THEME (themes/all)  ·  "Aurora" example
+   EmuCenter — TEMA COMPLETO (themes/all)  ·  exemplo "Aurora"
    --------------------------------------------------------------------------
-   "All" themes change EVERYTHING: app colors, game list, console headers,
-   separators, gradient, and the logo color. They also accept button/font
-   rules (QSS, similar to CSS) and work together with themes/normal packs
-   (which are applied on top).
+   Temas "all" mudam TUDO: cores do app, lista de jogos, cabeçalhos dos
+   consoles, separações, degradê e a cor da logo. Eles também aceitam regras
+   de botões/fontes (QSS, parecido com CSS) e funcionam junto com os pacotes
+   de themes/normal (que são aplicados por cima).
 
-   Anything NOT defined here keeps the base theme's value.
+   Tudo que NÃO for definido aqui continua com o valor do tema base.
    ========================================================================== */
 
 :root {
-    /* ---- general colors ---- */
-    --bg:        #0f1b2d;   /* window background */
-    --panel:     #14253d;   /* panels, text fields */
-    --panel2:    #1d3556;   /* title bar, buttons, tabs */
-    --border:    #2c4b78;   /* borders */
-    --text:      #eaf3ff;   /* main text */
-    --muted:     #8fb0d9;   /* secondary text */
-    --accent:    #19c6a7;   /* highlight: selection, PLAY button, bars */
+    /* ---- cores gerais ---- */
+    --bg:        #0f1b2d;   /* fundo da janela */
+    --panel:     #14253d;   /* painéis, campos de texto */
+    --panel2:    #1d3556;   /* barra de título, botões, abas */
+    --border:    #2c4b78;   /* bordas */
+    --text:      #eaf3ff;   /* texto principal */
+    --muted:     #8fb0d9;   /* texto secundário */
+    --accent:    #19c6a7;   /* destaque: seleção, botão JOGAR, barras */
 
-    /* ---- game list ---- */
-    --group-bg:             #173a5e;   /* header for each console (Nintendo 64, GameCube...) */
-    --group-text:           #bff3ea;
-    --row-light:            #e9f7f4;   /* "light" rows (1st, 3rd, 5th...) */
-    --row-light-text:       #0d2b33;
-    --row-dark:             #0b1626;   /* "dark" rows (2nd, 4th, 6th...) */
-    --row-dark-text:        #d9f1ee;
-    --row-selected:         #19c6a7;   /* selected row */
-    --row-selected-text:    #04211c;
-    --row-separator:        #2c4b78;   /* thin line between games (when row-gap = 0) */
-    --row-radius:           14;        /* row and group border radius (0 to 30) */
-    --row-gap:              6;         /* space between rows in pixels (0 to 20) */
+    /* ---- lista de jogos ---- */
+    --group-bg:           #173a5e;   /* cabeçalho de cada console (Nintendo 64, GameCube...) */
+    --group-text:         #bff3ea;
+    --row-light:          #e9f7f4;   /* linhas "claras" (1ª, 3ª, 5ª...) */
+    --row-light-text:     #0d2b33;
+    --row-dark:           #0b1626;   /* linhas "escuras" (2ª, 4ª, 6ª...) */
+    --row-dark-text:      #d9f1ee;
+    --row-selected:       #19c6a7;   /* linha selecionada */
+    --row-selected-text:  #04211c;
+    --row-separator:      #2c4b78;   /* linha fina entre jogos (quando row-gap = 0) */
+    --row-radius:         14;        /* arredondamento das linhas e grupos (0 a 30) */
+    --row-gap:            6;         /* espaço entre linhas em pixels (0 a 20) */
 
-    /* ---- emulator status ---- */
-    --ok:   #5fe3a1;   /* "Ready" */
-    --warn: #ffd166;   /* "or >>" alternatives */
-    --err:  #ff7b7b;   /* "need >>" / error */
+    /* ---- status do emulador ---- */
+    --ok:   #5fe3a1;   /* "Pronto" */
+    --warn: #ffd166;   /* alternativas "or >>" */
+    --err:  #ff7b7b;   /* "need >>" / erro */
 
     /* ---- logo ---- */
-    --plate:        #e8f4ff;   /* light plate behind the logo (only if logo-color = original) */
-    --logo-color:   #7ff3de;   /* text logo color. Use "original" to keep the original logo color */
+    --plate:      #e8f4ff;   /* placa clara atrás da logo (só se logo-color = original) */
+    --logo-color: #7ff3de;   /* cor da logo de texto. Use "original" para manter a cor da logo */
 
-    /* ---- gradient ---- */
-    --gradient:     on;        /* on | off  (theme decides and ignores user option) */
-    --gradient-a:   #16345c;   /* top color  (background and title bar) */
-    --gradient-b:   #0a1320;   /* bottom color */
+    /* ---- degradê ---- */
+    --gradient:   on;        /* on | off  (o tema decide e ignora a opção do usuário) */
+    --gradient-a: #16345c;   /* cor de cima  (fundo e barra de título) */
+    --gradient-b: #0a1320;   /* cor de baixo */
 }
 
-/* ---- buttons, fonts, and details (QSS) ---- */
+/* ---- botões, fontes e detalhes (QSS) ---- */
 * { font-family: "Segoe UI", "Inter", sans-serif; }
-
 QPushButton { border-radius: 14px; padding: 11px 24px; }
 QPushButton:hover { border-color: #19c6a7; background: #234872; }
 QPushButton#play { border-radius: 16px; color: #04211c; }

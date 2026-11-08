@@ -12,7 +12,6 @@ class QListWidget;
 class QPushButton;
 class QTextEdit;
 
-// Configurações de um jogo: nome, descrição, ícone, banner (com busca no IGDB) e execução.
 class GameSettingsDialog : public QDialog {
     Q_OBJECT
 public:

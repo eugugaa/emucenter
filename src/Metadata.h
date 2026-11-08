@@ -9,7 +9,6 @@
 #include <functional>
 #include <memory>
 
-// Metadados dos jogos: personalizado > IGDB > libretro-thumbnails/Wikipédia. Cache local + fila com progresso.
 class Metadata : public QObject {
     Q_OBJECT
 public:
@@ -18,15 +17,18 @@ public:
 
     void enqueueAll(const QList<Game>& games);
     void requestIcon(const Game& g);
-    void requestBanner(const Game& g);               // imediato (jogo selecionado)
+    void requestBanner(const Game& g);
     void requestText(const Game& g);
-    void loadCachedIcons(const QList<Game>& games);  // só do disco, sem rede
-    void refreshGame(const Game& g);                 // apaga o cache automático e baixa de novo
-    void resetGame(const Game& g);                   // apaga também tudo que foi personalizado
+    void loadCachedIcons(const QList<Game>& games);
+    void refreshGame(const Game& g);
+    void resetGame(const Game& g);
     void clearFailures();
     void clearCache();
     QString cacheDir() const;
-    QString customDir() const;                       // imagens escolhidas pelo usuário
+    QString customDir() const;
+    QString iconPath(const QString& key) const;
+    QString bannerPath(const QString& key) const;
+    QString cachedText(const Game& g) const;
     qint64 cacheBytes() const;
 
 signals:
@@ -47,7 +49,6 @@ private:
     void fetchWikipedia(const Game& g, const QString& cache, Cb done);
     void tryUrls(const Game& g, int kind, QList<QUrl> urls, const QString& cache, Cb done);
 
-    // lista de imagens do libretro-thumbnails por console/pasta (para achar o jogo por nome aproximado)
     struct Listing { QStringList names, norms; };
     void loadListing(const QString& thumbDir, const QString& dir, std::function<void(std::shared_ptr<Listing>)> cb);
     void libretroUrls(const Game& g, int kind, std::function<void(QList<QUrl>)> cb);

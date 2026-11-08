@@ -1,4 +1,5 @@
 #include "Emulators.h"
+#include "FileUtil.h"
 #include "I18n.h"
 #include <QDesktopServices>
 #include <QDir>
@@ -35,7 +36,7 @@ void EmulatorManager::setEmuDir(const QString& id, const QString& dir) {
 QString EmulatorManager::arch() const {
     const QString o = QSettings().value("arch", "auto").toString();
     if (o == "x64" || o == "arm64") return o;
-    const QString c = QSysInfo::currentCpuArchitecture().toLower();   // arquitetura nativa da máquina
+    const QString c = QSysInfo::currentCpuArchitecture().toLower();
     return (c.contains("arm") || c.contains("aarch")) ? "arm64" : "x64";
 }
 
@@ -50,7 +51,7 @@ bool EmulatorManager::hasAutoSource(const EmuDef& e) {
 QString EmulatorManager::findExe(const QString& id) const {
     const EmuDef* e = Catalog::emu(id);
     if (!e) return {};
-    const QString manual = QSettings().value("emu/" + id).toString();   // importado pelo usuário
+    const QString manual = QSettings().value("emu/" + id).toString();
     if (!manual.isEmpty() && QFile::exists(manual)) return manual;
 
     QDirIterator it(emuDir(id), e->exeNames, QDir::Files, QDirIterator::Subdirectories);
@@ -66,8 +67,9 @@ QString EmulatorManager::corePath(const QString& core) const {
     const QString ra = findExe("retroarch");
     if (ra.isEmpty()) return {};
     const QStringList dirs = {QFileInfo(ra).absolutePath() + "/cores", emuDir("retroarch") + "/cores"};
+    const QStringList exts = {".dll", ".so", ".dylib"};
     for (const QString& d : dirs)
-        for (const QString& ext : {".dll", ".so", ".dylib"})
+        for (const QString& ext : exts)
             if (QFile::exists(d + "/" + core + ext)) return d + "/" + core + ext;
     return {};
 }
@@ -94,7 +96,6 @@ void EmulatorManager::importExe(const QString& id, const QString& path) {
     QSettings().setValue("emu/" + id, path);
 }
 
-// ---------- download / extração ----------
 void EmulatorManager::download(const QUrl& url, const QString& dest, Done done) {
     QNetworkRequest rq(url);
     rq.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
@@ -120,7 +121,7 @@ void EmulatorManager::download(const QUrl& url, const QString& dest, Done done) 
 void EmulatorManager::extract(const QString& archive, const QString& dir, Done done) {
     emit status(T("Extraindo…"));
     emit progress(-1);
-    auto* p = new QProcess(this);   // Windows 10+ e Linux/macOS têm "tar" (lê zip e 7z)
+    auto* p = new QProcess(this);
     connect(p, &QProcess::finished, this, [p, archive, done](int code, QProcess::ExitStatus) {
         const bool ok = code == 0;
         if (ok) QFile::remove(archive);
@@ -133,14 +134,13 @@ void EmulatorManager::extract(const QString& archive, const QString& dir, Done d
     p->start("tar", {"-xf", archive, "-C", dir});
 }
 
-// ---------- descobrir a versão/URL mais recente ----------
 void EmulatorManager::resolve(const EmuDef& e, Resolved cb) {
     QNetworkRequest rq;
     rq.setHeader(QNetworkRequest::UserAgentHeader, "EmuCenter/0.2");
     rq.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
     const QString arch = this->arch();
 
-    if (e.id == "dolphin") {   // página oficial lista: releases/<ver>/dolphin-<ver>-x64.7z | -arm64.7z
+    if (e.id == "dolphin") {
         rq.setUrl(QUrl("https://dolphin-emu.org/download/?nocr=true"));
         QNetworkReply* r = nam_.get(rq);
         connect(r, &QNetworkReply::finished, this, [r, arch, cb]() {
@@ -151,7 +151,7 @@ void EmulatorManager::resolve(const EmuDef& e, Resolved cb) {
                                                QRegularExpression::CaseInsensitiveOption);
             QString fallbackUrl, fallbackVer;
             auto it = re.globalMatch(html);
-            while (it.hasNext()) {   // a página lista da mais nova para a mais antiga
+            while (it.hasNext()) {
                 const auto m = it.next();
                 const QString a = m.captured(2).toLower();
                 if (a == arch) return cb(true, m.captured(0), m.captured(1), "");
@@ -174,8 +174,10 @@ void EmulatorManager::resolve(const EmuDef& e, Resolved cb) {
             auto find = [&](const QString& rx) -> QString {
                 if (rx.isEmpty()) return {};
                 const QRegularExpression re(rx, QRegularExpression::CaseInsensitiveOption);
-                for (const auto& a : assets)
-                    if (re.match(a.toObject()["name"].toString()).hasMatch()) return a.toObject()["browser_download_url"].toString();
+                for (const auto& a : assets) {
+                    const QJsonObject ao = a.toObject();
+                    if (re.match(ao["name"].toString()).hasMatch()) return ao["browser_download_url"].toString();
+                }
                 return {};
             };
             QString url = arch == "arm64" ? find(e.assetRegexArm) : QString();
@@ -191,7 +193,7 @@ void EmulatorManager::resolve(const EmuDef& e, Resolved cb) {
 
 void EmulatorManager::installExe(const EmuDef& e, Done done) {
 #ifndef Q_OS_WIN
-    // Os pacotes acima são de Windows; nos outros sistemas abre o site oficial.
+
     QDesktopServices::openUrl(QUrl(e.homepage));
     return done(false, T("Abri o site oficial de %1 — instale lá e use 'Importar'.").arg(e.name));
 #endif
@@ -212,9 +214,9 @@ void EmulatorManager::installExe(const EmuDef& e, Done done) {
             extract(file, dir, [this, e, ver, done](bool ok3, QString m3) {
                 if (ok3) {
                     QSettings().setValue("ver/" + e.id, ver);
-                    if (e.id == "dolphin") {   // modo portátil: configurações ficam na pasta do emulador
+                    if (e.id == "dolphin") {
                         const QString exe = findExe("dolphin");
-                        if (!exe.isEmpty()) { QFile f(QFileInfo(exe).absolutePath() + "/portable.txt"); f.open(QIODevice::WriteOnly); }
+                        if (!exe.isEmpty()) FileUtil::touch(QFileInfo(exe).absolutePath() + "/portable.txt");
                     }
                 }
                 done(ok3, m3);

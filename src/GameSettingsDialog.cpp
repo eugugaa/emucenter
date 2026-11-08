@@ -42,7 +42,6 @@ GameSettingsDialog::GameSettingsDialog(const Game& g, EmulatorManager* emu, Meta
     });
 }
 
-// ---------------------------------------------------------------- Informações
 QWidget* GameSettingsDialog::buildInfo() {
     auto* w = new QWidget; auto* l = new QVBoxLayout(w);
     QSettings s;
@@ -74,7 +73,7 @@ QWidget* GameSettingsDialog::buildInfo() {
     desc_ = new QTextEdit;
     desc_->setAcceptRichText(false);
     QString cur = s.value("game/" + game_.key() + "/desc").toString();
-    if (cur.isEmpty()) {   // mostra a descrição automática atual, se existir
+    if (cur.isEmpty()) {
         QFile cf(meta_->cacheDir() + "/" + game_.key() + "_" + I18n::lang() + ".txt");
         if (cf.open(QIODevice::ReadOnly)) cur = QString::fromUtf8(cf.readAll());
     }
@@ -108,7 +107,6 @@ void GameSettingsDialog::pickResult() {
     status_->setText(T("Selecionado: %1. Veja a aba Imagens para escolher ícone e banner.").arg(g.name));
 }
 
-// ---------------------------------------------------------------- Imagens
 QWidget* GameSettingsDialog::buildImages() {
     auto* w = new QWidget; auto* l = new QHBoxLayout(w);
 
@@ -150,7 +148,6 @@ QWidget* GameSettingsDialog::buildImages() {
     column(T("Ícone / capa"), iconPrev_, iconOpts_, QSize(150, 150), QSize(90, 120), true);
     column(T("Banner"), bannerPrev_, bannerOpts_, QSize(300, 150), QSize(160, 90), false);
 
-    // imagens atuais
     auto cur = [&](const QString& suffix) {
         QString p = meta_->customDir() + "/" + game_.key() + suffix;
         if (!QFile::exists(p)) p = meta_->cacheDir() + "/" + game_.key() + suffix;
@@ -177,7 +174,6 @@ void GameSettingsDialog::fillOptions(const IgdbGame& g) {
     for (const QString& s : g.screenshots) { add(bannerOpts_, s, "screenshot_med", "1080p"); }
 }
 
-// ---------------------------------------------------------------- Execução
 QWidget* GameSettingsDialog::buildRun() {
     auto* w = new QWidget; auto* f = new QFormLayout(w);
     const auto o = Library::options(game_);
@@ -194,7 +190,6 @@ QWidget* GameSettingsDialog::buildRun() {
     return w;
 }
 
-// ---------------------------------------------------------------- salvar
 void GameSettingsDialog::save() {
     QSettings s;
     const QString k = game_.key();
@@ -209,7 +204,7 @@ void GameSettingsDialog::save() {
     }
     if (pickedId_) {
         s.setValue("game/" + k + "/igdbId", pickedId_);
-        // o jogo do IGDB mudou: apaga o cache automático para baixar tudo de novo a partir da escolha
+
         QFile::remove(meta_->cacheDir() + "/" + k + "_igdb.json");
         QFile::remove(meta_->cacheDir() + "/" + k + "_igdb.json.none");
         for (const char* suf : {"_icon.png", "_banner.png", "_pt.txt", "_en.txt"}) { QFile::remove(meta_->cacheDir() + "/" + k + suf); QFile::remove(meta_->cacheDir() + "/" + k + suf + ".none"); }

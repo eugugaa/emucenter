@@ -9,17 +9,17 @@ class EmulatorManager : public QObject {
 public:
     explicit EmulatorManager(QObject* parent = nullptr);
 
-    QString root() const;                              // pasta-base dos emuladores (configurável)
-    QString emuDir(const QString& id) const;           // pasta própria de cada emulador
+    QString root() const;
+    QString emuDir(const QString& id) const;
     void setEmuDir(const QString& id, const QString& dir);
     void setRoot(const QString& dir);
-    QString findExe(const QString& id) const;          // "" se não instalado
+    QString findExe(const QString& id) const;
     QString corePath(const QString& core) const;
     bool available(const EmuLink& l) const;
     bool buildCommand(const EmuLink& l, const QString& rom, QString& prog, QStringList& args) const;
     QString installedVersion(const QString& id) const;
-    QString arch() const;                              // "x64" ou "arm64" (processador do usuário)
-    static bool hasAutoSource(const EmuDef& e);        // dá para baixar/atualizar sozinho?
+    QString arch() const;
+    static bool hasAutoSource(const EmuDef& e);
 
     void install(const QString& id, const QString& core = {}, bool force = false);
     void importExe(const QString& id, const QString& path);
@@ -28,9 +28,9 @@ public:
 
 signals:
     void status(const QString& msg);
-    void progress(int percent);                        // -1 = indeterminado
+    void progress(int percent);
     void finished(bool ok, const QString& msg);
-    void updateInfo(const QString& id, const QString& latest, int state);   // 0 em dia, 1 nova, 2 desconhecida
+    void updateInfo(const QString& id, const QString& latest, int state);
     void updatesChecked(int available);
 
 private:

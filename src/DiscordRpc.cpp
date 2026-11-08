@@ -20,7 +20,7 @@ DiscordRpc::DiscordRpc(QObject* p) : QObject(p), sock_(new QLocalSocket(this)) {
     connect(sock_, &QLocalSocket::readyRead, this, &DiscordRpc::onReadyRead);
     connect(sock_, &QLocalSocket::disconnected, this, &DiscordRpc::onDisconnected);
     connect(sock_, &QLocalSocket::errorOccurred, this, [this](QLocalSocket::LocalSocketError) {
-        if (enabled_ && !handshaked_) connectNext();         // this channel does not exist: try the next one
+        if (enabled_ && !handshaked_) connectNext();
     });
     connect(qApp, &QCoreApplication::aboutToQuit, this, &DiscordRpc::shutdown);
 }
@@ -39,7 +39,7 @@ void DiscordRpc::setStatus(const QString& s) {
 QStringList DiscordRpc::candidates() const {
     QStringList out;
 #ifdef Q_OS_WIN
-    for (int i = 0; i < 10; ++i) out << QString("discord-ipc-%1").arg(i);    // \\.\pipe\discord-ipc-N
+    for (int i = 0; i < 10; ++i) out << QString("discord-ipc-%1").arg(i);
 #else
     QStringList bases;
     for (const char* v : {"XDG_RUNTIME_DIR", "TMPDIR", "TMP", "TEMP"}) {
@@ -56,10 +56,10 @@ QStringList DiscordRpc::candidates() const {
 
 void DiscordRpc::connectNext() {
     if (!enabled_) return;
-    if (effectiveAppId().isEmpty()) { setStatus(T("Enter the Discord Application ID.")); return; }
+    if (effectiveAppId().isEmpty()) { setStatus(T("Informe o Application ID do Discord.")); return; }
     if (idx_ >= cand_.size()) {
         idx_ = 0;
-        setStatus(T("Discord not found (is it open?). Trying again…"));
+        setStatus(T("Discord não encontrado (está aberto?). Tentando de novo…"));
         retry_.start(15000);
         return;
     }
@@ -77,10 +77,11 @@ void DiscordRpc::send(quint32 op, const QJsonObject& obj) {
 }
 
 void DiscordRpc::onConnected() {
+    retry_.stop();
     connectedAppId_ = effectiveAppId();
     handshaked_ = true;
-    send(0, {{"v", 1}, {"client_id", connectedAppId_}});          // HANDSHAKE
-    setStatus(T("Connecting to Discord…"));
+    send(0, {{"v", 1}, {"client_id", connectedAppId_}});
+    setStatus(T("Conectando ao Discord…"));
 }
 
 void DiscordRpc::onReadyRead() {
@@ -93,23 +94,23 @@ void DiscordRpc::onReadyRead() {
         const QByteArray raw = rx_.mid(8, len);
         rx_.remove(0, 8 + len);
 
-        if (op == 3) {                                            // PING -> PONG
+        if (op == 3) {
             QByteArray f(8, 0);
             qToLittleEndian<quint32>(4, f.data());
             qToLittleEndian<quint32>(quint32(raw.size()), f.data() + 4);
             sock_->write(f + raw);
-        } else if (op == 2) {                                     // CLOSE (e.g. invalid Application ID)
-            setStatus(T("Discord refused: %1").arg(o["message"].toString()));
-            enabled_ = false;                                     // stop trying until settings change
+        } else if (op == 2) {
+            setStatus(T("Discord recusou: %1").arg(o["message"].toString()));
+            enabled_ = false;
             retry_.stop();
             sock_->disconnectFromServer();
         } else if (op == 1) {
             if (o["evt"].toString() == "READY") {
                 ready_ = true;
-                setStatus(T("Connected to Discord (%1)").arg(o["data"].toObject()["user"].toObject()["username"].toString()));
+                setStatus(T("Conectado ao Discord (%1)").arg(o["data"].toObject()["user"].toObject()["username"].toString()));
                 pushActivity();
             } else if (o["evt"].toString() == "ERROR") {
-                setStatus(T("Discord refused: %1").arg(o["data"].toObject()["message"].toString()));
+                setStatus(T("Discord recusou: %1").arg(o["data"].toObject()["message"].toString()));
             }
         }
     }
@@ -119,13 +120,13 @@ void DiscordRpc::onDisconnected() {
     ready_ = false;
     handshaked_ = false;
     rx_.clear();
-    if (enabled_) { setStatus(T("Discord disconnected. Trying again…")); retry_.start(5000); }
+    if (enabled_) { setStatus(T("Discord desconectado. Tentando de novo…")); retry_.start(5000); }
 }
 
 QJsonObject DiscordRpc::buildActivity(bool* any) const {
     QSettings s;
     QJsonObject a;
-    auto txt = [](const QString& t) { return t.size() >= 2 ? t : QString(); };   // Discord requires 2+ characters
+    auto txt = [](const QString& t) { return t.size() >= 2 ? t : QString(); };
     const bool showTimer = s.value("discord/showTimer", true).toBool();
 
     if (active_ > 0) {
@@ -167,14 +168,14 @@ void DiscordRpc::pushActivity() {
     bool any = false;
     const QJsonObject act = buildActivity(&any);
     QJsonObject args{{"pid", qint64(QCoreApplication::applicationPid())}};
-    if (any) args["activity"] = act;                              // without "activity" = clear presence
+    if (any) args["activity"] = act;
     send(1, {{"cmd", "SET_ACTIVITY"}, {"args", args}, {"nonce", QString::number(++nonce_)}});
 }
 
 void DiscordRpc::applySettings() {
     const bool en = QSettings().value("discord/enabled", false).toBool();
     if (!en) {
-        if (ready_) {                                             // clear presence before turning off
+        if (ready_) {
             send(1, {{"cmd", "SET_ACTIVITY"}, {"args", QJsonObject{{"pid", qint64(QCoreApplication::applicationPid())}}},
                      {"nonce", QString::number(++nonce_)}});
             sock_->flush();
@@ -183,12 +184,12 @@ void DiscordRpc::applySettings() {
         enabled_ = false;
         retry_.stop();
         if (sock_->state() != QLocalSocket::UnconnectedState) { sock_->flush(); sock_->disconnectFromServer(); }
-        setStatus(T("Disabled."));
+        setStatus(T("Desativado."));
         return;
     }
     const bool wasEnabled = enabled_;
     enabled_ = true;
-    if (ready_ && connectedAppId_ == effectiveAppId()) { pushActivity(); return; }    // only options changed
+    if (ready_ && connectedAppId_ == effectiveAppId()) { pushActivity(); return; }
     retry_.stop();
     if (sock_->state() != QLocalSocket::UnconnectedState) sock_->abort();
     Q_UNUSED(wasEnabled);
@@ -212,10 +213,22 @@ void DiscordRpc::stopPlaying(int n) {
     pushActivity();
 }
 
+void DiscordRpc::reconnect() {
+    retry_.stop();
+    if (sock_->state() != QLocalSocket::UnconnectedState) sock_->abort();
+    ready_ = false;
+    handshaked_ = false;
+    if (!QSettings().value("discord/enabled", false).toBool()) { setStatus(T("Desativado.")); return; }
+    enabled_ = true;
+    cand_ = candidates();
+    idx_ = 0;
+    connectNext();
+}
+
 void DiscordRpc::shutdown() {
     if (ready_) {
         QJsonObject args{{"pid", qint64(QCoreApplication::applicationPid())}};
-        send(1, {{"cmd", "SET_ACTIVITY"}, {"args", args}, {"nonce", QString::number(++nonce_)}});   // clear
+        send(1, {{"cmd", "SET_ACTIVITY"}, {"args", args}, {"nonce", QString::number(++nonce_)}});
         sock_->flush();
         sock_->waitForBytesWritten(300);
     }

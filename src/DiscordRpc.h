@@ -4,17 +4,17 @@
 #include <QObject>
 #include <QTimer>
 
-// Discord Rich Presence via IPC local (sem SDK). Reconecta sozinho se o Discord abrir depois do app.
 class DiscordRpc : public QObject {
     Q_OBJECT
 public:
     static DiscordRpc& instance();
-    void applySettings();                                   // lê as configurações e (des)conecta
+    void applySettings();
     void setBrowsing(int gameCount);
     void setPlaying(const QString& title, const QString& systemId, const QString& systemName);
     void stopPlaying(int gameCount);
-    void shutdown();                                        // limpa a presença e fecha
-    QString effectiveAppId() const;                         // configurações > valor embutido no .exe
+    void reconnect();
+    void shutdown();
+    QString effectiveAppId() const;
     bool isConnected() const { return ready_; }
     QString status() const { return status_; }
 signals:

@@ -14,7 +14,6 @@ QString Game::key() const {
     return QString::fromLatin1(QCryptographicHash::hash(path.toUtf8(), QCryptographicHash::Sha1).toHex());
 }
 
-// ISOs de GameCube/Wii trazem uma "assinatura mágica" no cabeçalho
 static QString headerSystem(const QString& path) {
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly)) return {};
@@ -26,29 +25,49 @@ static QString headerSystem(const QString& path) {
     return {};
 }
 
+static bool hasPspGame(const QString& path) {
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) return false;
+    return f.read(2 * 1024 * 1024).contains("PSP_GAME");
+}
+
 static const SystemDef* detect(const QString& path) {
     const QString ext = QFileInfo(path).suffix().toLower();
+    const QStringList parts = QFileInfo(path).absolutePath().toLower().split('/');
+    auto hintScore = [&parts](const SystemDef& s) {
+        int best = 0;
+        for (const QString& hint : s.folderHints)
+            for (const QString& p : parts) {
+                const bool hit = hint.size() <= 3 ? p == hint : p.contains(hint);
+                if (hit && hint.size() > best) best = hint.size();
+            }
+        return best;
+    };
     QList<const SystemDef*> cand;
     for (const auto& s : Catalog::systems())
-        if (s.exts.contains(ext)) cand << &s;
+        if (s.exts.contains(ext) || (s.hintExts.contains(ext) && hintScore(s) > 0)) cand << &s;
     if (cand.isEmpty()) return nullptr;
     if (cand.size() == 1) return cand.first();
 
     if (ext == "iso" || ext == "gcm") {
         const QString h = headerSystem(path);
-        for (auto* s : cand) if (s->id == h) return s;
+        for (auto* s : std::as_const(cand)) if (s->id == h) return s;
+        if (h.isEmpty() && ext == "iso") {
+            if (hasPspGame(path))
+                for (auto* s : std::as_const(cand)) if (s->id == "psp") return s;
+            int top = 0;
+            for (auto* s : std::as_const(cand)) top = qMax(top, hintScore(*s));
+            if (top == 0)
+                for (auto* s : std::as_const(cand)) if (s->id == "ps2") return s;
+        }
     }
-    // extensão ambígua: usa o nome das pastas ("PS2", "GameCube"...) como pista
-    const QStringList parts = QFileInfo(path).absolutePath().toLower().split('/');
-    const SystemDef* best = nullptr;
+    const SystemDef* best = cand.first();
     int bestScore = 0;
-    for (auto* s : cand)
-        for (const QString& hint : s->folderHints)
-            for (const QString& p : parts) {
-                const bool hit = hint.size() <= 3 ? p == hint : p.contains(hint);
-                if (hit && hint.size() > bestScore) { bestScore = hint.size(); best = s; }
-            }
-    return best ? best : cand.first();
+    for (auto* s : std::as_const(cand)) {
+        const int sc = hintScore(*s);
+        if (sc > bestScore) { bestScore = sc; best = s; }
+    }
+    return best;
 }
 
 QString Library::cleanTitle(const QString& raw) {
@@ -88,10 +107,22 @@ QList<Game> Library::scan(const QStringList& dirs) {
             }
         }
     }
-    std::sort(out.begin(), out.end(), [](const Game& a, const Game& b) {
+    sortGames(out);
+    return out;
+}
+
+void Library::sortGames(QList<Game>& games) {
+    const QString mode = QSettings().value("sortOrder", "name").toString();
+    std::sort(games.begin(), games.end(), [&mode](const Game& a, const Game& b) {
+        if (mode == "recent") {
+            const QDateTime la = lastPlayed(a), lb = lastPlayed(b);
+            if (la != lb) return la > lb;
+        } else if (mode == "playtime") {
+            const qint64 pa = playSeconds(a), pb = playSeconds(b);
+            if (pa != pb) return pa > pb;
+        }
         return a.title.localeAwareCompare(b.title) < 0;
     });
-    return out;
 }
 
 qint64 Library::playSeconds(const Game& g) {
@@ -163,7 +194,7 @@ bool Library::importFile(const QString& src, const QString& destDir, bool move, 
     QDir().mkpath(dir);
 
     QStringList files = {src};
-    if (QFileInfo(src).suffix().toLower() == "cue") {   // .cue aponta para um ou mais .bin
+    if (QFileInfo(src).suffix().toLower() == "cue") {
         QFile cue(src);
         if (cue.open(QIODevice::ReadOnly)) {
             const QString txt = QString::fromUtf8(cue.readAll());
@@ -178,9 +209,9 @@ bool Library::importFile(const QString& src, const QString& destDir, bool move, 
     for (const QString& f : files) {
         const QString target = dir + "/" + QFileInfo(f).fileName();
         if (QFile::exists(target)) { if (error) *error = "já existe: " + QFileInfo(f).fileName(); return false; }
-        if (move && QFile::rename(f, target)) continue;                 // mesmo disco: instantâneo
+        if (move && QFile::rename(f, target)) continue;
         if (!copyChunked(f, target, canceled, error)) return false;
-        if (move) QFile::remove(f);                                     // outro disco: copiou, agora apaga a origem
+        if (move) QFile::remove(f);
     }
     return true;
 }
